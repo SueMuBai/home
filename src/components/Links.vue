@@ -1,5 +1,5 @@
 <template>
-  <div v-if="siteLinks[0]" class="links">
+  <div v-if="siteLinks.length" class="links">
     <div class="line">
       <Icon size="20">
         <Link />
@@ -8,7 +8,7 @@
     </div>
     <!-- 网站列表 -->
     <Swiper
-      v-if="siteLinks[0]"
+      v-if="siteLinks.length"
       :modules="[Pagination, Mousewheel]"
       :slides-per-view="1"
       :space-between="40"
@@ -23,14 +23,16 @@
         <el-row class="link-all" :gutter="20">
           <el-col v-for="(item, index) in site" :span="8" :key="item">
             <div
-              class="item cards"
+              :class="{ item: true, cards: true, 'is-hidden': item.hidden }"
               :style="index < 3 ? 'margin-bottom: 20px' : null"
+              :title="item.hidden ? '仅管理员可见' : null"
               @click="jumpLink(item)"
             >
               <Icon size="26">
-                <component :is="siteIcon[item.icon]" />
+                <component :is="siteIcons[item.icon] ?? Link" />
               </Icon>
               <span class="name text-hidden">{{ item.name }}</span>
+              <Icon v-if="item.hidden" class="hidden-mark" size="12"><EyeSlash /></Icon>
             </div>
           </el-col>
         </el-row>
@@ -42,35 +44,26 @@
 
 <script setup>
 import { Icon } from "@vicons/utils";
-// 可前往 https://www.xicons.org 自行挑选并在此处引入
-import { Link, Blog, CompactDisc, Cloud, Compass, Book, Fire, LaptopCode } from "@vicons/fa"; // 注意使用正确的类别
+import { Link, EyeSlash } from "@vicons/fa";
 import { mainStore } from "@/store";
 import { Swiper, SwiperSlide } from "swiper/vue";
 import { Pagination, Mousewheel } from "swiper/modules";
-import siteLinks from "@/assets/siteLinks.json";
+import { siteConfig } from "@/config";
+import { siteIcons } from "@/utils/siteIcons";
+
+const siteLinks = computed(() => siteConfig.siteLinks);
 
 const store = mainStore();
 
 // 计算网站链接
 const siteLinksList = computed(() => {
   const result = [];
-  for (let i = 0; i < siteLinks.length; i += 6) {
-    const subArr = siteLinks.slice(i, i + 6);
+  for (let i = 0; i < siteLinks.value.length; i += 6) {
+    const subArr = siteLinks.value.slice(i, i + 6);
     result.push(subArr);
   }
   return result;
 });
-
-// 网站链接图标
-const siteIcon = {
-  Blog,
-  Cloud,
-  CompactDisc,
-  Compass,
-  Book,
-  Fire,
-  LaptopCode,
-};
 
 // 链接跳转
 const jumpLink = (data) => {
@@ -80,10 +73,6 @@ const jumpLink = (data) => {
     window.open(data.link, "_blank");
   }
 };
-
-onMounted(() => {
-  console.log(siteLinks);
-});
 </script>
 
 <style lang="scss" scoped>
@@ -141,7 +130,19 @@ onMounted(() => {
       flex-direction: row;
       justify-content: center;
       padding: 0 10px;
+      position: relative;
       animation: fade 0.5s;
+
+      &.is-hidden {
+        outline: 1px dashed #ffffff50;
+        outline-offset: -1px;
+      }
+      .hidden-mark {
+        position: absolute;
+        top: 8px;
+        right: 10px;
+        opacity: 0.6;
+      }
 
       &:hover {
         transform: scale(1.02);

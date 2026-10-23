@@ -4,9 +4,12 @@
     <!-- Logo -->
     <div class="logo">
       <img class="logo-img" :src="siteLogo" alt="logo" />
-      <div :class="{ name: true, 'text-hidden': true, long: siteUrl[0].length >= 6 }">
-        <span class="bg">{{ siteUrl[0] }}</span>
-        <span class="sm">.{{ siteUrl[1] }}</span>
+      <div
+        :class="{ name: true, 'text-hidden': true, long: siteDomain[0].length >= 6 }"
+        @click="onDomainClick"
+      >
+        <span class="bg">{{ siteDomain[0] }}</span>
+        <span v-if="siteDomain[1]" class="sm">.{{ siteDomain[1] }}</span>
       </div>
     </div>
     <!-- 简介 -->
@@ -34,27 +37,20 @@ import { Icon } from "@vicons/utils";
 import { QuoteLeft, QuoteRight } from "@vicons/fa";
 import { Error } from "@icon-park/vue-next";
 import { mainStore } from "@/store";
+import { siteConfig, siteDomain } from "@/config";
+import { useDomainClicks } from "@/utils/domainClicks";
 const store = mainStore();
 
-// 主页站点logo
-const siteLogo = import.meta.env.VITE_SITE_MAIN_LOGO;
-// 站点链接
-const siteUrl = computed(() => {
-  const url = import.meta.env.VITE_SITE_URL;
-  if (!url) return "imsyy.top".split(".");
-  // 判断协议前缀
-  if (url.startsWith("http://") || url.startsWith("https://")) {
-    const urlFormat = url.replace(/^(https?:\/\/)/, "");
-    return urlFormat.split(".");
-  }
-  return url.split(".");
-});
+const siteLogo = siteConfig.site.mainLogo;
+const { desc } = siteConfig;
 
 // 简介区域文字
 const descriptionText = reactive({
-  hello: import.meta.env.VITE_DESC_HELLO,
-  text: import.meta.env.VITE_DESC_TEXT,
+  hello: desc.hello,
+  text: desc.text,
 });
+
+const onDomainClick = useDomainClicks();
 
 // 切换右侧功能区
 const changeBox = () => {
@@ -77,11 +73,11 @@ watch(
   () => store.boxOpenState,
   (value) => {
     if (value) {
-      descriptionText.hello = import.meta.env.VITE_DESC_HELLO_OTHER;
-      descriptionText.text = import.meta.env.VITE_DESC_TEXT_OTHER;
+      descriptionText.hello = desc.helloOther;
+      descriptionText.text = desc.textOther;
     } else {
-      descriptionText.hello = import.meta.env.VITE_DESC_HELLO;
-      descriptionText.text = import.meta.env.VITE_DESC_TEXT;
+      descriptionText.hello = desc.hello;
+      descriptionText.text = desc.text;
     }
   },
 );
@@ -107,6 +103,12 @@ watch(
 
       .bg {
         font-size: 5rem;
+      }
+      &.long .bg {
+        font-size: 4rem;
+        @media (min-width: 790px) and (max-width: 850px), (max-width: 480px) {
+          font-size: 3rem;
+        }
       }
 
       .sm {

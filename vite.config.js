@@ -1,5 +1,5 @@
 /* eslint-disable no-undef */
-import { defineConfig, loadEnv } from "vite";
+import { defineConfig } from "vite";
 import { ElementPlusResolver } from "unplugin-vue-components/resolvers";
 import { resolve } from "path";
 import { VitePWA } from "vite-plugin-pwa";
@@ -9,7 +9,7 @@ import Components from "unplugin-vue-components/vite";
 import viteCompression from "vite-plugin-compression";
 
 // https://vitejs.dev/config/
-export default ({ mode }) =>
+export default () =>
   defineConfig({
     plugins: [
       vue(),
@@ -25,6 +25,9 @@ export default ({ mode }) =>
         workbox: {
           skipWaiting: true,
           clientsClaim: true,
+          // HTML 由服务端按后台配置动态生成，不能被 Service Worker 缓存
+          globPatterns: ["**/*.{js,css}"],
+          navigateFallback: null,
           runtimeCaching: [
             {
               urlPattern: /(.*?)\.(js|css|woff2|woff|ttf)/, // js / css 静态资源缓存
@@ -43,9 +46,8 @@ export default ({ mode }) =>
           ],
         },
         manifest: {
-          name: loadEnv(mode, process.cwd()).VITE_SITE_NAME,
-          short_name: loadEnv(mode, process.cwd()).VITE_SITE_NAME,
-          description: loadEnv(mode, process.cwd()).VITE_SITE_DES,
+          name: "Home",
+          short_name: "Home",
           display: "standalone",
           start_url: "/",
           theme_color: "#424242",
@@ -93,7 +95,6 @@ export default ({ mode }) =>
     ],
     server: {
       port: "3000",
-      open: true,
     },
     resolve: {
       alias: [
@@ -113,6 +114,12 @@ export default ({ mode }) =>
       },
     },
     build: {
+      rollupOptions: {
+        input: {
+          main: resolve(__dirname, "index.html"),
+          admin: resolve(__dirname, "admin.html"),
+        },
+      },
       minify: "terser",
       terserOptions: {
         compress: {

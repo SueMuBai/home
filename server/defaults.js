@@ -1,0 +1,78 @@
+export const defaultConfig = {
+  site: {
+    name: "沐白の主页",
+    author: "沐白",
+    keywords: "沐白,个人主页",
+    description: "一个默默无闻的主页",
+    url: "subaimu.com",
+    logo: "/images/icon/favicon.ico",
+    mainLogo: "/images/icon/logo.png",
+    appleLogo: "/images/icon/apple-touch-icon.png",
+    startDate: "2020-10-24",
+    icp: "",
+    github: "https://github.com/imsyy/home",
+  },
+  desc: {
+    hello: "Hello World !",
+    text: "一个建立于 21 世纪的小站，存活于互联网的边缘",
+    helloOther: "Oops !",
+    textOther: "哎呀，这都被你发现了（ 再点击一次可关闭 ）",
+  },
+  siteLinks: [
+    { icon: "Blog", name: "博客", link: "https://blog.imsyy.top/" },
+    { icon: "Cloud", name: "网盘", link: "https://pan.imsyy.top/" },
+    { icon: "CompactDisc", name: "音乐", link: "https://music.imsyy.top/" },
+    { icon: "Compass", name: "起始页", link: "https://nav.imsyy.top/" },
+    { icon: "Book", name: "网址集", link: "https://web.imsyy.top/" },
+    { icon: "Fire", name: "今日热榜", link: "https://hot.imsyy.top/" },
+    { icon: "LaptopCode", name: "站点监测", link: "https://status.imsyy.top/" },
+  ],
+  friendLinks: [],
+  socialLinks: [
+    {
+      name: "Github",
+      icon: "/images/icon/github.png",
+      tip: "去 Github 看看",
+      url: "https://github.com/imsyy",
+    },
+    {
+      name: "BiliBili",
+      icon: "/images/icon/bilibili.png",
+      tip: "(゜-゜)つロ 干杯 ~",
+      url: "https://space.bilibili.com/98544142",
+    },
+    {
+      name: "QQ",
+      icon: "/images/icon/qq.png",
+      tip: "有什么事吗",
+      url: "https://res.abeim.cn/api/qq/?qq=1539250352",
+    },
+    {
+      name: "Email",
+      icon: "/images/icon/email.png",
+      tip: "来封 Email ~",
+      url: "mailto:one@imsyy.top",
+    },
+    {
+      name: "Twitter",
+      icon: "/images/icon/twitter.png",
+      tip: "你懂的 ~",
+      url: "https://twitter.com/iimmsyy",
+    },
+    {
+      name: "Telegram",
+      icon: "/images/icon/telegram.png",
+      tip: "你懂的 ~",
+      url: "https://t.me/bottom_user",
+    },
+  ],
+  weather: {
+    amapKey: "",
+  },
+  music: {
+    api: "https://api-meting.imsyy.top/api",
+    server: "netease",
+    type: "playlist",
+    id: "9379831714",
+  },
+};

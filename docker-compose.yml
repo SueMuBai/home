@@ -7,3 +7,9 @@ services:
       dockerfile: Dockerfile
     ports:
       - "12445:12445"
+    environment:
+      # 首次启动时的管理员密码；不设置则随机生成并打印在日志中
+      - ADMIN_PASSWORD=
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

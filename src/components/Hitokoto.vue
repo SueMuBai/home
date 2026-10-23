@@ -32,6 +32,7 @@ import { MusicMenu, Error } from "@icon-park/vue-next";
 import { getHitokoto } from "@/api";
 import { mainStore } from "@/store";
 import debounce from "@/utils/debounce.js";
+import { siteConfig } from "@/config";
 
 const store = mainStore();
 
@@ -41,7 +42,7 @@ const openMusicShow = ref(false);
 // 一言数据
 const hitokotoData = reactive({
   text: "这里应该显示一句话",
-  from: "無名",
+  from: siteConfig.site.author,
 });
 
 // 获取一言数据
@@ -59,7 +60,7 @@ const getHitokotoData = async () => {
       }),
     });
     hitokotoData.text = "这里应该显示一句话";
-    hitokotoData.from = "無名";
+    hitokotoData.from = siteConfig.site.author;
   }
 };
 

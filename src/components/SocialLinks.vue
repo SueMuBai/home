@@ -3,7 +3,7 @@
   <div class="social">
     <div class="link">
       <a
-        v-for="item in socialLinks"
+        v-for="item in siteConfig.socialLinks"
         :key="item.name"
         :href="item.url"
         target="_blank"
@@ -18,7 +18,7 @@
 </template>
 
 <script setup>
-import socialLinks from "@/assets/socialLinks.json";
+import { siteConfig } from "@/config";
 
 // 社交链接提示
 const socialTip = ref("通过这里联系我吧");

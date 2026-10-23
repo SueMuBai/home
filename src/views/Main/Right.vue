@@ -1,33 +1,29 @@
 <template>
   <div :class="store.mobileOpenState ? 'right' : 'right hidden'">
     <!-- 移动端 Logo -->
-    <div class="logo text-hidden" @click="store.mobileFuncState = !store.mobileFuncState">
-      <span class="bg">{{ siteUrl[0] }}</span>
-      <span class="sm">.{{ siteUrl[1] }}</span>
+    <div class="logo text-hidden" @click="onDomainClick">
+      <span class="bg">{{ siteDomain[0] }}</span>
+      <span v-if="siteDomain[1]" class="sm">.{{ siteDomain[1] }}</span>
     </div>
     <!-- 功能区 -->
     <Func />
     <!-- 网站链接 -->
     <Link />
+    <!-- 友站链接 -->
+    <FriendLinks />
   </div>
 </template>
 
 <script setup>
 import { mainStore } from "@/store";
+import { siteDomain } from "@/config";
 import Func from "@/views/Func/index.vue";
 import Link from "@/components/Links.vue";
+import FriendLinks from "@/components/FriendLinks.vue";
+import { useDomainClicks } from "@/utils/domainClicks";
 const store = mainStore();
-
-// 站点链接
-const siteUrl = computed(() => {
-  const url = import.meta.env.VITE_SITE_URL;
-  if (!url) return "imsyy.top".split(".");
-  // 判断协议前缀
-  if (url.startsWith("http://") || url.startsWith("https://")) {
-    const urlFormat = url.replace(/^(https?:\/\/)/, "");
-    return urlFormat.split(".");
-  }
-  return url.split(".");
+const onDomainClick = useDomainClicks(() => {
+  store.mobileFuncState = !store.mobileFuncState;
 });
 </script>
 
