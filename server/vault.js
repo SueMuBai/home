@@ -81,8 +81,10 @@ export const createVault = ({ file = path.join(dataDir, "login-vault.json"), key
         username: text(input.username ?? "", "用户名", 200),
         usernameField: field(input.usernameField, "用户名字段", true),
         passwordField: field(input.passwordField || "password", "密码字段"),
+        adapter: input.adapter || old?.adapter || "form",
         enabled: input.enabled !== false,
       };
+      if (!["form", "json", "3x-ui", "komari", "astrbot", "napcat", "new-api", "miaomiaowu", "vm2api", "memoirs", "cpa"].includes(entry.adapter)) invalid("登录方式无效");
       if (!entry.name) invalid("名称不能为空");
       if (new URL(entry.targetUrl).origin !== new URL(entry.loginUrl).origin) invalid("登录接口和目标后台必须属于同一站点");
       if (data.entries.some(x => x.id !== entry.id && canonical(x.targetUrl) === canonical(entry.targetUrl))) invalid("目标后台已有自动登录配置");
@@ -98,7 +100,7 @@ export const createVault = ({ file = path.join(dataDir, "login-vault.json"), key
         entry.sealed = seal(entry, { password, extraFields: extra });
       } else {
         if (!old) invalid("首次配置需要填写密码");
-        if (entry.loginUrl !== old.loginUrl || entry.targetUrl !== old.targetUrl || entry.passwordField !== old.passwordField || entry.usernameField !== old.usernameField) invalid("修改登录地址或字段时需要重新填写密码和附加参数");
+        if (entry.loginUrl !== old.loginUrl || entry.targetUrl !== old.targetUrl || entry.passwordField !== old.passwordField || entry.usernameField !== old.usernameField || entry.adapter !== (old.adapter || "form")) invalid("修改登录地址或字段时需要重新填写密码和附加参数");
         entry.sealed = old.sealed;
       }
       if (index < 0) data.entries.push(entry); else data.entries[index] = entry;

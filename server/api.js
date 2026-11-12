@@ -30,7 +30,7 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
-export const createApi = ({ access, vault }) => {
+export const createApi = ({ access, vault, bridge }) => {
   const api = express.Router();
   api.use(access.requireIp, access.requireOrigin);
   api.use((req, res, next) => { res.set("Cache-Control", "private, no-store"); next(); });
@@ -140,6 +140,9 @@ export const createApi = ({ access, vault }) => {
   api.put("/logins/:id", requireAdmin, wrap(async (req, res) => res.json(await vault.save(req.body, req.params.id))));
   api.delete("/logins/:id", requireAdmin, wrap(async (req, res) => { await vault.remove(req.params.id); res.json({ ok: true }); }));
   api.get("/launch/:id", requireAdmin, wrap(async (req, res) => {
+    const metadata = (await vault.list()).find(entry => entry.id === req.params.id && entry.enabled);
+    if (!metadata) return res.sendStatus(404);
+    if (metadata.adapter && metadata.adapter !== "form") return bridge.issue(req, res, metadata.id, metadata.targetUrl);
     const entry = await vault.launch(req.params.id);
     if (!entry) return res.sendStatus(404);
     sendLoginForm(res, entry);

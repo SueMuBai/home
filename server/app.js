@@ -3,6 +3,7 @@ import path from "node:path";
 import { createApi } from "./api.js";
 import { getSession } from "./auth.js";
 import { getConfig } from "./store.js";
+import { createLoginBridge } from "./login-bridge.js";
 
 export const createApp = ({ access, vault }) => {
   const app = express();
@@ -23,7 +24,9 @@ export const createApp = ({ access, vault }) => {
       res.set("Cache-Control", "private, no-store").json({ ...config, siteLinks, isAdmin, ...(allowed ? { adminPath: access.adminPath } : {}) });
     } catch (error) { next(error); }
   });
-  app.use(`${access.adminPath}/api`, createApi({ access, vault }));
+  const bridge = createLoginBridge({ access, vault });
+  app.post("/_home_login/consume", access.requireIp, express.urlencoded({ extended: false, limit: "1kb" }), bridge.consume);
+  app.use(`${access.adminPath}/api`, createApi({ access, vault, bridge }));
   app.use(access.adminPath, access.requireIp);
   // Unknown API paths must never fall through to the public SPA document.
   app.use("/api", (req, res) => res.sendStatus(404));
