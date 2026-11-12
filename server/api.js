@@ -17,6 +17,7 @@ import {
 } from "./auth.js";
 import { getAuth, getConfig, saveAuth, saveConfig } from "./store.js";
 import { ConfigError, sanitizeConfig } from "./validate.js";
+import { createSso } from "./sso.js";
 
 const MIN_PASSWORD = 8;
 
@@ -32,12 +33,14 @@ const requireAdmin = (req, res, next) => {
 export const createApi = () => {
   const api = express.Router();
   api.use(express.json({ limit: "200kb" }));
+  const sso = createSso();
+  api.use(sso.router);
 
   // 隐藏的网站链接只下发给已登录的管理员
   api.get("/config", (req, res) => {
     const config = getConfig();
     const isAdmin = Boolean(getSession(req));
-    const siteLinks = isAdmin ? config.siteLinks : config.siteLinks.filter((item) => !item.hidden);
+    const siteLinks = isAdmin ? config.siteLinks.map(sso.launchLink) : config.siteLinks.filter((item) => !item.hidden);
     res.set("Cache-Control", "no-store").json({ ...config, siteLinks, isAdmin });
   });
 
