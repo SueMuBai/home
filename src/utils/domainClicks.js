@@ -13,7 +13,7 @@ export const useDomainClicks = (singleClick) => {
     if (store.adminLoginOpen) return;
     clearTimeout(timer);
     count += 1;
-    if (count === 3) {
+    if (count === 5) {
       count = 0;
       if (siteConfig.adminPath && !siteConfig.isAdmin) store.adminLoginOpen = true;
       return;
