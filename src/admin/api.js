@@ -1,9 +1,13 @@
-const request = async (method, url, body) => {
-  const base = document.querySelector('meta[name="home-admin-api"]')?.content;
+import { siteConfig } from "@/config";
+
+const request = async (method, url, body, { signal } = {}) => {
+  const base = document.querySelector('meta[name="home-admin-api"]')?.content
+    || (siteConfig.adminPath ? `${siteConfig.adminPath}/api` : null);
   if (!base) throw new Error("管理入口已变更，请使用新的入口打开");
   const res = await fetch(`${base}${url}`, {
     method,
     credentials: "same-origin",
+    signal,
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -18,7 +22,7 @@ const request = async (method, url, body) => {
 
 export const adminApi = {
   session: () => request("GET", "/session"),
-  login: (password, code) => request("POST", "/login", { password, code }),
+  login: (password, code, options) => request("POST", "/login", { password, code }, options),
   logout: () => request("POST", "/logout"),
   getConfig: () => request("GET", "/config"),
   saveConfig: (config) => request("PUT", "/config", config),

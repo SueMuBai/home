@@ -25,7 +25,7 @@ export const mainStore = defineStore("main", {
       playerAutoplay: false, // 是否自动播放
       playerLoop: "all", // 循环播放 "all", "one", "none"
       playerOrder: "list", // 循环顺序 "list", "random"
-      adminEntryShow: false, // 后台入口显示状态
+      adminLoginOpen: false, // 主页管理员登录弹窗，不持久化
     };
   },
   getters: {

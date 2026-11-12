@@ -5,7 +5,7 @@ export const siteConfig = reactive({});
 export const loadSiteConfig = async () => {
   const res = await fetch("/api/config", { cache: "no-store" });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  Object.assign(siteConfig, await res.json());
+  Object.assign(siteConfig, { adminPath: undefined }, await res.json());
 };
 
 const stripProtocol = (url) => url.replace(/^https?:\/\//, "").replace(/\/$/, "");

@@ -1,5 +1,5 @@
 <template>
-  <div class="login">
+  <div class="login" :class="{ embedded }">
     <div class="box glass">
       <div class="brand">
         <span class="bg">{{ domain[0] }}</span>
@@ -35,16 +35,17 @@
         </el-button>
         <el-button v-if="needCode" class="back" text @click="reset">返回</el-button>
       </el-form>
-      <a class="home" href="/">← 返回主页</a>
+      <a v-if="!embedded" class="home" href="/">← 返回主页</a>
     </div>
   </div>
 </template>
 
 <script setup>
-import { nextTick, ref } from "vue";
+import { nextTick, onBeforeUnmount, ref } from "vue";
 import { adminApi } from "./api";
 import { useDomain } from "./domain";
 
+defineProps({ embedded: Boolean });
 const emit = defineEmits(["success"]);
 const domain = useDomain();
 const password = ref("");
@@ -53,6 +54,12 @@ const needCode = ref(false);
 const loading = ref(false);
 const error = ref("");
 const codeInput = ref(null);
+let controller;
+onBeforeUnmount(() => {
+  controller?.abort();
+  password.value = "";
+  code.value = "";
+});
 
 const reset = () => {
   needCode.value = false;
@@ -61,11 +68,13 @@ const reset = () => {
 };
 
 const submit = async () => {
-  if (!password.value) return;
+  if (!password.value || loading.value) return;
+  controller = new AbortController();
   loading.value = true;
   error.value = "";
   try {
-    const result = await adminApi.login(password.value, needCode.value ? code.value : undefined);
+    const result = await adminApi.login(password.value, needCode.value ? code.value : undefined, { signal: controller.signal });
+    if (controller.signal.aborted) return;
     if (result.requireTotp) {
       needCode.value = true;
       await nextTick();
@@ -73,8 +82,10 @@ const submit = async () => {
       return;
     }
     password.value = "";
+    code.value = "";
     emit("success");
   } catch (e) {
+    if (e.name === "AbortError") return;
     error.value = e.message;
     if (needCode.value) code.value = "";
   } finally {
@@ -96,6 +107,16 @@ const submit = async () => {
   width: 360px;
   padding: 32px 28px 24px;
   animation: fade 0.5s;
+}
+.login.embedded {
+  min-height: 0;
+  padding: 0;
+  .box {
+    width: 100%;
+    padding: 4px 0 8px;
+    background: none;
+    backdrop-filter: none;
+  }
 }
 .brand {
   text-align: center;

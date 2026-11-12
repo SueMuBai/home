@@ -16,7 +16,7 @@
           <MoreSet />
         </section>
       </div>
-      <AdminEntry v-show="!store.backgroundShow" />
+      <AdminEntry />
       <!-- 移动端菜单按钮 -->
       <Icon
         class="menu"
