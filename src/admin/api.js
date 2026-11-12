@@ -1,5 +1,7 @@
 const request = async (method, url, body) => {
-  const res = await fetch(`/api${url}`, {
+  const base = document.querySelector('meta[name="home-admin-api"]')?.content;
+  if (!base) throw new Error("管理入口已变更，请使用新的入口打开");
+  const res = await fetch(`${base}${url}`, {
     method,
     credentials: "same-origin",
     headers: body ? { "Content-Type": "application/json" } : undefined,
@@ -15,13 +17,16 @@ const request = async (method, url, body) => {
 };
 
 export const adminApi = {
-  session: () => request("GET", "/admin/session"),
-  login: (password, code) => request("POST", "/admin/login", { password, code }),
-  logout: () => request("POST", "/admin/logout"),
-  getConfig: () => request("GET", "/admin/config"),
-  saveConfig: (config) => request("PUT", "/admin/config", config),
-  changePassword: (current, next) => request("POST", "/admin/password", { current, next }),
-  setupTotp: () => request("POST", "/admin/totp/setup"),
-  enableTotp: (code) => request("POST", "/admin/totp/enable", { code }),
-  disableTotp: (password, code) => request("POST", "/admin/totp/disable", { password, code }),
+  session: () => request("GET", "/session"),
+  login: (password, code) => request("POST", "/login", { password, code }),
+  logout: () => request("POST", "/logout"),
+  getConfig: () => request("GET", "/config"),
+  saveConfig: (config) => request("PUT", "/config", config),
+  changePassword: (current, next) => request("POST", "/password", { current, next }),
+  setupTotp: () => request("POST", "/totp/setup"),
+  enableTotp: (code) => request("POST", "/totp/enable", { code }),
+  disableTotp: (password, code) => request("POST", "/totp/disable", { password, code }),
+  listLogins: () => request("GET", "/logins"),
+  saveLogin: (entry) => entry.id ? request("PUT", `/logins/${entry.id}`, entry) : request("POST", "/logins", entry),
+  deleteLogin: (id) => request("DELETE", `/logins/${id}`),
 };

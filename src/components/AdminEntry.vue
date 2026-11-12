@@ -1,6 +1,6 @@
 <template>
   <Transition name="fade">
-    <a v-if="store.adminEntryShow" class="admin-entry" href="/admin" target="_blank">
+    <a v-if="store.adminEntryShow && siteConfig.adminPath" class="admin-entry" :href="siteConfig.adminPath" target="_blank" rel="noopener noreferrer">
       <Icon size="16"><UserShield /></Icon>
       <span>{{ siteConfig.isAdmin ? "进入后台" : "管理员登录" }}</span>
     </a>

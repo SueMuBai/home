@@ -227,10 +227,13 @@
         <el-tab-pane label="安全" name="security">
           <Security :totp-enabled="totpEnabled" @changed="emit('refresh')" />
         </el-tab-pane>
+        <el-tab-pane label="自动登录" name="autoLogin">
+          <AutoLogin v-if="tab === 'autoLogin'" />
+        </el-tab-pane>
       </el-tabs>
 
     </main>
-    <div v-if="config && tab !== 'security'" class="actions glass">
+    <div v-if="config && !['security', 'autoLogin'].includes(tab)" class="actions glass">
       <el-button @click="load">放弃修改</el-button>
       <el-button type="primary" :loading="saving" @click="save">保存配置</el-button>
     </div>
@@ -245,6 +248,7 @@ import { siteIcons } from "@/utils/siteIcons";
 import { adminApi } from "./api";
 import RowActions from "./RowActions.vue";
 import Security from "./Security.vue";
+import AutoLogin from "./AutoLogin.vue";
 import { useDomain } from "./domain";
 import LinkCards from "./LinkCards.vue";
 
@@ -265,6 +269,7 @@ const sections = [
   { name: "weather", label: "天气", path: "M7 18h10a5 5 0 0 0 0-10 6 6 0 0 0-12 1 4.5 4.5 0 0 0 2 9Z" },
   { name: "music", label: "音乐", path: "M9 18V5l12-3v13M9 8l12-3M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm12-3a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" },
   { name: "security", label: "安全", path: "m12 2 9 4v6c0 5-9 10-9 10S3 17 3 12V6l9-4Zm-4 10 3 3 5-6" },
+  { name: "autoLogin", label: "自动登录", path: "M8 15a5 5 0 1 1 4-4l9 0v4h-3v3h-4v-3Z" },
 ];
 
 const handleError = (error) => {

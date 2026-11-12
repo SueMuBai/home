@@ -3,7 +3,10 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createApi } from "./api.js";
+import { lookup } from "node:dns/promises";
+import { createApp } from "./app.js";
+import { createAccess } from "./access.js";
+import { createVault } from "./vault.js";
 import { getConfig, initStore, resetAuth } from "./store.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -27,12 +30,6 @@ const injectMeta = (html) => {
   return html.replace("<!--site-meta-->", tags.join("\n    "));
 };
 
-const parseTrustProxy = (value) => {
-  if (!value) return false;
-  if (value === "true") return true;
-  return /^\d+$/.test(value) ? Number(value) : value;
-};
-
 if (process.argv.includes("--reset-password")) {
   await resetAuth(process.env.ADMIN_PASSWORD);
   console.log("[home] 两步验证已同时关闭");
@@ -41,14 +38,20 @@ if (process.argv.includes("--reset-password")) {
 
 await initStore();
 
-const app = express();
-app.disable("x-powered-by");
-app.set("trust proxy", parseTrustProxy(process.env.TRUST_PROXY));
-app.use("/api", createApi());
+const access = createAccess();
+const updateProxy = async () => access.setTrustedProxies((await lookup(process.env.HOME_PROXY_HOST || "ng", { all: true })).map(x => x.address));
+await updateProxy();
+const proxyRefresh = setInterval(() => updateProxy().catch(() => { access.setTrustedProxies([]); console.error("Gateway DNS refresh failed"); }), 60_000);
+proxyRefresh.unref();
+const app = createApp({ access, vault: createVault() });
 
 const httpServer = createServer(app);
 const pages = { index: "index.html", admin: "admin.html" };
-const pageFor = (url) => (/^\/admin(\/|$)/.test(url) ? pages.admin : pages.index);
+const pageFor = (url) => (url === access.adminPath || url === access.adminPath + "/" ? pages.admin : pages.index);
+const renderPage = (html, file) => {
+  const result = injectMeta(html);
+  return file === pages.admin ? result.replace("</head>", `<meta name="home-admin-api" content="${access.adminPath}/api"></head>`) : result;
+};
 
 if (isDev) {
   const { createServer: createVite } = await import("vite");
@@ -62,7 +65,7 @@ if (isDev) {
     try {
       const file = pageFor(req.path);
       const html = await readFile(path.join(root, file), "utf8");
-      res.type("html").send(injectMeta(await vite.transformIndexHtml(req.originalUrl, html)));
+      res.type("html").send(renderPage(await vite.transformIndexHtml(req.originalUrl, html), file));
     } catch (error) {
       vite.ssrFixStacktrace(error);
       next(error);
@@ -87,10 +90,11 @@ if (isDev) {
   });
   app.use(express.static(dist, { index: false }));
   app.get("*", (req, res) => {
-    res.set("Cache-Control", "no-cache").type("html").send(injectMeta(templates[pageFor(req.path)]));
+    const file = pageFor(req.path);
+    res.set("Cache-Control", "private, no-store").type("html").send(renderPage(templates[file], file));
   });
 }
 
 httpServer.listen(port, () => {
-  console.log(`[home] http://localhost:${port}  后台：http://localhost:${port}/admin`);
+  console.log(`[home] Listening on port ${port}; management entry is configured privately`);
 });
