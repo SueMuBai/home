@@ -1,5 +1,8 @@
 # Home native login handoff. No application source patch is required.
 location = /.home-login {
+    # HTTPS at the browser can arrive over HTTP from the existing CDN origin.
+    set $home_login_transport "$scheme:$http_x_forwarded_proto";
+    if ($home_login_transport !~ "^(https:|http:https$)") { return 308 https://$host$request_uri; }
     if ($request_method != POST) { return 405; }
     # Cloudflare published ranges, verified 2026-11-05 via /ips-v4 and /ips-v6.
     # Accept CF-Connecting-IP only from these peers, then replace the client chain.
@@ -41,4 +44,5 @@ location = /.home-login {
     client_max_body_size 1k;
     access_log off;
     proxy_cache off;
+    add_header Cache-Control "private, no-store" always;
 }

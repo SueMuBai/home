@@ -34,7 +34,7 @@ node --test tests/*.test.mjs
 
 ## JSON 服务的网关接入
 
-模板在 `deploy/home-login.nginx.inc`。在目标站的 HTTPS server 块 include 此模板（部署路径 `/etc/nginx/conf.d/home-native-login.inc`），再 nginx -t / reload；无需修改目标应用源码或重启目标应用。主页与目标站须由同一个可信网关代理，后端仅信任该网关的准确 IP；模板只信任 Cloudflare 官方网段提供的客户端 IP，再覆盖 XFF。保留目标 Host，转发到主页 `/_home_login/consume`，不能将用户自报的目标域名或 XFF 直接当成可信信息。
+模板在 `deploy/home-login.nginx.inc`。在目标站实际使用的回源 server 块（80 和 443）接入此模板（部署路径 `/etc/nginx/conf.d/home-native-login.inc`），再 nginx -t / reload；无需修改目标应用源码或重启目标应用。主页与目标站须由同一个可信网关代理，后端仅信任该网关的准确 IP；模板只信任 Cloudflare 官方网段提供的客户端 IP，再覆盖 XFF。保留目标 Host，转发到主页 `/_home_login/consume`，不能将用户自报的目标域名或 XFF 直接当成可信信息。
 
 点击时先在主页校验白名单及现有会话，签发 60 秒内可用的一次性随机票据。POST 到目标域名 `/.home-login` 后，后端再次验证可信网关、Origin、IP、UA、目标 Host、原主页会话及服务启用状态，原子消费票据后才解密密码。票据不包含密码，不能跨服务、跨用户或并发重放。所有交接响应 no-store、防嵌入；凭据不会进入 URL 或访问日志。
 
@@ -46,6 +46,12 @@ node --test tests/*.test.mjs
 
 SSTP 的 `/admin` 仍使用普通 POST 表单；`/results/` 和 `/checker` 是两个独立导航配置，登录方式选择 HTTP Basic。通过同一个一次性票据交接到目标站后，浏览器在目标 origin 使用 XMLHttpRequest 的原生认证参数完成挑战，再跳转到受保护页面。用户密码保留在后端密文中，点击时进入浏览器内存；导航链接和地址栏不携带凭据，也不写 localStorage/sessionStorage。浏览器按原生 HTTP 认证缓存管理本次会话，页面刷新和后续数据请求可继续使用；退出主页不撤销该原生缓存。目标站的 Basic/Bearer 认证规则和检测服务无需更改。
 
-SSTP 的 HTTPS server 与其他 JSON 服务一样 include `deploy/home-login.nginx.inc` 的线上模板，既有 nginx 路由和认证保持有效。新增两项凭据可在主页后台「自动登录」中编辑。
+SSTP 的 80/443 server 与其他 JSON 服务一样 include `deploy/home-login.nginx.inc` 的线上模板，既有 nginx 路由和认证保持有效。新增两项凭据可在主页后台「自动登录」中编辑。
 
 自动登录添加/编辑弹窗挂载到 body，避免后台毛玻璃/滚动区域改变 fixed 定位。弹窗限制为当前窗口 90dvh，表单内部滚动，固定底部操作区域；取消、遮罩及 Esc 关闭后清空临时密码，编辑留空保存保留原密文。桌面与手机尺寸均验证从列表底部打开、关闭、重新编辑和底部提交。
+
+### Cloudflare 回源验收
+
+浏览器访问 HTTPS 并不代表源站收到 443 请求，当前 Cloudflare 路径可回源到 HTTP 80。登录交接模板必须同时接入实际回源的 80/443 server；只验证源站 443 会漏掉真实入口路由问题。模板根据源站 TLS 或 HTTPS 转发标记接受交接，直接明文 HTTP 则 308 跳回 HTTPS，保留 POST 方法；所有响应 no-store。
+
+发布验收还须通过真实公网域名（经过 Cloudflare）检查 `/.home-login`：直接 GET 为 405、无有效票据 POST 为 404，不能落到目标应用或代理协议处理。有效票据仍复用原有主页会话、目标 Host/Origin、IP/UA 绑定和一次性消费；不得为测试伪造生产管理员会话。
