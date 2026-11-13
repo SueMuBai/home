@@ -12,8 +12,11 @@
     <el-dialog v-model="show" class="auto-login-dialog" :title="draft.id ? '编辑自动登录' : '添加自动登录'" width="min(620px, 94vw)" top="5vh" append-to-body destroy-on-close @closed="draft.password = ''; extra = '{}'">
       <el-form id="auto-login-form" label-position="top" @submit.prevent="save">
         <el-form-item label="服务名称"><el-input v-model="draft.name" maxlength="30" /></el-form-item>
-        <el-form-item label="登录方式"><el-select v-model="draft.adapter"><el-option v-for="option in adapters" :key="option.value" :label="option.label" :value="option.value" /></el-select></el-form-item>
+        <el-form-item label="登录方式"><el-select v-model="draft.adapter" @change="adapterChanged"><el-option v-for="option in adapters" :key="option.value" :label="option.label" :value="option.value" /></el-select></el-form-item>
+        <el-form-item v-if="['metapi','sub2api','cpa'].includes(draft.adapter)" label="远端 Nginx 中转"><el-switch v-model="draft.remote" active-text="目标服务部署在其他服务器" /></el-form-item>
+        <p v-if="draft.remote">远端 Nginx 的 /.home-login 需代理 https://subaimu.com/_home_login/client；无需在 Nginx 填写账号或密码。</p>
         <p v-if="draft.adapter === 'metapi'">MetAPI 使用管理员 Token，请填在密码栏；用户名留空，接口为 /api/settings/auth/info。Token 仅在本次后台页面内存中使用，刷新后请重新从主页进入。远端 Nginx 需按部署说明接入 /.home-login。</p>
+        <p v-if="draft.adapter === 'sub2api'">Sub2API 使用邮箱密码，用户名字段填 email，登录接口为 /api/v1/auth/login。登录状态仅保存在当前页面内存，刷新后请重新从主页进入；验证码或双因素仍需在原站完成。</p>
         <el-form-item label="对应的网站链接"><el-input v-model="draft.targetUrl" placeholder="https://example.com/dashboard" /></el-form-item>
         <el-form-item label="登录接口地址"><el-input v-model="draft.loginUrl" placeholder="https://example.com/login" /></el-form-item>
         <el-form-item label="用户名字段（仅密码登录可留空）"><el-input v-model="draft.usernameField" placeholder="例如 username" /></el-form-item>
@@ -38,12 +41,13 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { adminApi } from "./api";
 
 const items = ref([]), show = ref(false), draft = ref({}), extra = ref("{}"), busy = ref(false);
-const adapters = [{value:'form',label:'普通 POST 表单'}, {value:'basic',label:'HTTP Basic 认证'}, {value:'json',label:'JSON + 会话 Cookie'}, ...['3x-ui','komari','astrbot','napcat','new-api','miaomiaowu','vm2api','memoirs','cpa','metapi'].map(value=>({value,label:({'miaomiaowu':'妙妙屋','memoirs':'光阴叙','cpa':'CPA Plus（密钥只在页面内存）','metapi':'MetAPI（管理员 Token）'})[value]||value}))];
+const adapters = [{value:'form',label:'普通 POST 表单'}, {value:'basic',label:'HTTP Basic 认证'}, {value:'json',label:'JSON + 会话 Cookie'}, ...['3x-ui','komari','astrbot','napcat','new-api','miaomiaowu','vm2api','memoirs','cpa','metapi','sub2api'].map(value=>({value,label:({'miaomiaowu':'妙妙屋','memoirs':'光阴叙','cpa':'CPA Plus（密钥只在页面内存）','metapi':'MetAPI（管理员 Token）','sub2api':'Sub2API（邮箱密码）'})[value]||value}))];
 const load = async () => { items.value = await adminApi.listLogins(); };
 const edit = (entry = {}) => {
-  draft.value = { name: "", targetUrl: "", loginUrl: "", username: "", usernameField: "", passwordField: "password", adapter: "form", enabled: true, ...entry, password: "" };
+  draft.value = { name: "", targetUrl: "", loginUrl: "", username: "", usernameField: "", passwordField: "password", adapter: "form", enabled: true, ...entry, remote: entry.remote ?? ['metapi','sub2api'].includes(entry.adapter), password: "" };
   extra.value = "{}"; show.value = true;
 };
+const adapterChanged = adapter => { draft.value.remote = ['metapi','sub2api'].includes(adapter); };
 const save = async () => {
   busy.value = true;
   try {

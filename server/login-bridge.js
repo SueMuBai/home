@@ -4,23 +4,27 @@ import { getSession } from "./auth.js";
 
 const escape = text => String(text).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 const json = data => JSON.stringify(data).replace(/</g, "\\u003c");
+// Sub2API preloads these payment SDKs even on its administrator dashboard.
+const paymentSources = "https://static.airwallex.com https://checkout.airwallex.com";
 const headers = (res, nonce, remoteHome = "") => res.set({
   "Cache-Control": "private, no-store, max-age=0", Pragma: "no-cache",
   "Referrer-Policy": "strict-origin", "X-Frame-Options": "DENY", "X-Content-Type-Options": "nosniff",
-  "Content-Security-Policy": `default-src 'self'; script-src 'self' 'nonce-${nonce}'; connect-src 'self' ${remoteHome}; style-src 'self' 'unsafe-inline'${remoteHome ? " https://fonts.googleapis.com" : ""}; img-src 'self' data: blob:${remoteHome ? " https://api.dicebear.com" : ""}; font-src 'self' data:${remoteHome ? " https://fonts.gstatic.com" : ""}; frame-ancestors 'none'; base-uri 'self'; form-action https:`,
+  "Content-Security-Policy": `default-src 'self'; script-src 'self' 'nonce-${nonce}'${remoteHome ? " " + paymentSources : ""}; connect-src 'self' ${remoteHome}${remoteHome ? " https://api.github.com https://*.airwallex.com" : ""}; style-src 'self' 'unsafe-inline'${remoteHome ? " https://fonts.googleapis.com " + paymentSources : ""}; img-src 'self' data: blob:${remoteHome ? " https://api.dicebear.com" : ""}; font-src 'self' data:${remoteHome ? " https://fonts.gstatic.com" : ""}; frame-src 'self'${remoteHome ? " https://checkout.airwallex.com" : ""}; frame-ancestors 'none'; base-uri 'self'; form-action https:`,
 });
 
 const payloadFor = entry => ({ adapter: entry.adapter, target: entry.targetUrl, login: entry.loginUrl, fields: entry.fields, passwordField: entry.passwordField, usernameField: entry.usernameField });
+const remoteAdapters = new Set(["metapi", "sub2api", "cpa"]);
+const usesRemoteHandoff = entry => remoteAdapters.has(entry.adapter) && (entry.remote ?? ["metapi", "sub2api"].includes(entry.adapter));
 
 export const createLoginBridge = ({ access, vault, now = Date.now, ttl = 60_000 }) => {
   const tickets = new Map();
   const prune = () => { for (const [key, item] of tickets) if (item.expires <= now()) tickets.delete(key); };
-  const issue = (req, res, id, targetUrl, adapter = "json") => {
+  const issue = (req, res, id, targetUrl, adapter = "json", remoteFlag) => {
     prune();
     if (tickets.size >= 1000) return res.sendStatus(429);
     const ticket = randomBytes(32).toString("base64url"), nonce = randomBytes(18).toString("base64");
-    const remote = adapter === "metapi";
-    tickets.set(ticket, { id, session: getSession(req).token, ip: normalizeIp(req.ip), ua: req.get("User-Agent") || "", target: new URL(targetUrl).origin, remote, expires: now() + ttl });
+    const remote = usesRemoteHandoff({ adapter, remote: remoteFlag });
+    tickets.set(ticket, { id, adapter, session: getSession(req).token, ip: normalizeIp(req.ip), ua: req.get("User-Agent") || "", target: new URL(targetUrl).origin, remote, expires: now() + ttl });
     headers(res, nonce);
     res.set("Content-Security-Policy", `default-src 'none'; script-src 'nonce-${nonce}'; form-action ${new URL(targetUrl).origin}; frame-ancestors 'none'; base-uri 'none'`);
     if (remote) {
@@ -54,7 +58,7 @@ export const createLoginBridge = ({ access, vault, now = Date.now, ttl = 60_000 
     const origin = req.get("Origin");
     if (!origin || !access.trustProxy(req.socket.remoteAddress, 0) || !access.isAllowed(req)
         || `https://${req.get("Host")}` !== access.origin) return false;
-    const allowed = (await vault.list()).some(entry => entry.enabled && entry.adapter === "metapi" && new URL(entry.targetUrl).origin === origin);
+    const allowed = (await vault.list()).some(entry => entry.enabled && usesRemoteHandoff(entry) && new URL(entry.targetUrl).origin === origin);
     if (!allowed) return false;
     res.set({ "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Methods": "POST", "Access-Control-Allow-Headers": "Content-Type" });
     return true;
@@ -73,7 +77,7 @@ export const createLoginBridge = ({ access, vault, now = Date.now, ttl = 60_000 
       // As with local handoff, only one request may decrypt the credential.
       tickets.delete(ticket);
       const entry = await vault.launch(item.id);
-      if (!entry || entry.adapter !== "metapi" || new URL(entry.targetUrl).origin !== item.target
+      if (!entry || !usesRemoteHandoff(entry) || entry.adapter !== item.adapter || new URL(entry.targetUrl).origin !== item.target
           || new URL(entry.loginUrl).origin !== item.target) return res.sendStatus(404);
       return res.json(payloadFor(entry));
     } catch (error) { next(error); }
@@ -103,13 +107,24 @@ const call=async(url,options={})=>{const response=await fetch(url,{credentials:'
   });
   const target=cfg.target;cfg=null;location.replace(target);return;
  }
- if(adapter==='cpa'||adapter==='metapi'){
-  const key=adapter==='metapi'?cfg.fields[cfg.passwordField].trim():cfg.fields[cfg.passwordField];
-  await call(cfg.login,{headers:{Authorization:'Bearer '+key}});
+ if(adapter==='cpa'||adapter==='metapi'||adapter==='sub2api'){
+  let seed,keys,destination=cfg.target;
+  if(adapter==='sub2api'){
+   const response=await call(cfg.login,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg.fields)});
+   const data=response.data;
+   if(response.code!==0||!data?.access_token||!data.user||data.requires_2fa||data.totp_required)throw Error('登录失败或需要额外验证');
+   seed={'auth_token':data.access_token,'auth_user':JSON.stringify(data.user),'token_expires_at':String(Date.now()+Number(data.expires_in||3600)*1000)};
+   if(data.refresh_token)seed.refresh_token=data.refresh_token;
+   keys=['auth_token','auth_user','token_expires_at','refresh_token'];
+   destination=new URL(data.user.role==='admin'?'/admin/dashboard':'/dashboard',cfg.target).href;
+  }else{
+   const key=adapter==='metapi'?cfg.fields[cfg.passwordField].trim():cfg.fields[cfg.passwordField];
+   await call(cfg.login,{headers:{Authorization:'Bearer '+key}});
+   seed=adapter==='metapi'?{'auth_token':key,'auth_token_expires_at':String(Date.now()+12*60*60*1000)}:{'isLoggedIn':'true','cli-proxy-auth':JSON.stringify({state:{apiBase:location.origin,managementKey:key,rememberPassword:true,sessionMode:'manager_embedded',sessionPanelBase:location.origin},version:0})};
+   keys=adapter==='metapi'?['auth_token','auth_token_expires_at']:['cli-proxy-auth','managementKey','apiBase','apiUrl','isLoggedIn'];
+  }
   const page=await fetch(cfg.target,{cache:'no-store',credentials:'same-origin'});if(!page.ok)throw Error('无法打开后台页面');
   let html=await page.text();
-  const seed=adapter==='metapi'?{'auth_token':key,'auth_token_expires_at':String(Date.now()+12*60*60*1000)}:{'isLoggedIn':'true','cli-proxy-auth':JSON.stringify({state:{apiBase:location.origin,managementKey:key,rememberPassword:true,sessionMode:'manager_embedded',sessionPanelBase:location.origin},version:0})};
-  const keys=adapter==='metapi'?['auth_token','auth_token_expires_at']:['cli-proxy-auth','managementKey','apiBase','apiUrl','isLoggedIn'];
   const shim='('+function(seed,names){const values=new Map(Object.entries(seed)),keys=new Set(names);const proto=Storage.prototype,get=proto.getItem,set=proto.setItem,remove=proto.removeItem;proto.getItem=function(k){return this===localStorage&&keys.has(k)?values.get(k)??null:get.call(this,k);};proto.setItem=function(k,v){if(this===localStorage&&keys.has(k)){values.set(k,String(v));return;}return set.call(this,k,v);};proto.removeItem=function(k){if(this===localStorage&&keys.has(k)){values.delete(k);return;}return remove.call(this,k);};}.toString()+')('+JSON.stringify(seed).replace(/</g,'\\u003c')+','+JSON.stringify(keys)+');';
   const doc=new DOMParser().parseFromString(html,'text/html');
   // Browsers hide the nonce attribute during DOM serialization. Use a marker
@@ -117,7 +132,7 @@ const call=async(url,options={})=>{const response=await fetch(url,{credentials:'
   for(const node of doc.querySelectorAll('script')){node.removeAttribute('nonce');node.setAttribute('data-home-login-nonce','${nonce}');}
   const bootstrap=doc.createElement('script');bootstrap.setAttribute('data-home-login-nonce','${nonce}');bootstrap.textContent=shim;doc.head.prepend(bootstrap);
   html=doc.documentElement.outerHTML.replaceAll('data-home-login-nonce="${nonce}"','nonce="${nonce}"');
-  const target=cfg.target;cfg=null;history.replaceState(null,'',target);
+  cfg=null;history.replaceState(null,'',destination);
   document.open();document.write(html);document.close();return;
  }
  const requestHeaders={'Content-Type':'application/json'};

@@ -84,6 +84,20 @@ test("URL, field and secret validation", async () => {
   await assert.rejects(() => vault.save({ ...entry, loginUrl: "https://test.example/new", password: "" }, entry.id));
 });
 
+test("remote handoff configuration persists and changing it requires credential confirmation", async () => {
+  const vault = vaultAt("remote-metadata.json");
+  const sub = await vault.save({ ...input("sub2api"), adapter: "sub2api", usernameField: "email" });
+  assert.equal(sub.remote, true);
+  const cpa = await vault.save({ ...input("cpa"), adapter: "cpa" });
+  assert.equal(cpa.remote, false);
+  await assert.rejects(() => vault.save({ ...cpa, remote: true, password: "" }, cpa.id));
+  const remote = await vault.save({ ...cpa, remote: true, password: input().password }, cpa.id);
+  assert.equal(remote.remote, true);
+  assert.equal((await vaultAt("remote-metadata.json").list()).find(e => e.id === cpa.id).remote, true);
+  await assert.rejects(() => vault.save({ ...input("bad-remote"), adapter: "json", remote: true }));
+  await assert.rejects(() => vault.save({ ...input("bad-value"), adapter: "cpa", remote: "yes" }));
+});
+
 test("management routes enforce IP, session, origin, obsolete paths and on-click secrets", async () => {
   const adminPath = "/fixture_random_entry_12345678901234", origin = "https://subaimu.com";
   const access = createAccess({ adminPath, allowedIps: ["185.93.71.64"], trustedProxies: ["127.0.0.1"], origin });

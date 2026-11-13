@@ -10,14 +10,14 @@ const access = createAccess({ adminPath: "/test_random_admin_1234567890", allowe
 const response = () => ({ headers: {}, code: 200, set(key, value) { if (typeof key === "object") Object.assign(this.headers, key); else this.headers[key] = value; return this; }, type() { return this; }, send(body) { this.body = body; return this; }, json(body) { this.body = body; return this; }, sendStatus(code) { this.code = code; return this; } });
 const request = session => ({ ip: "185.93.71.64", socket: { remoteAddress: "127.0.0.1" }, headers: { cookie: `home_admin_session=${session}` }, get(name) { return ({ "User-Agent": "fixture-browser", "Origin": home, "Host": "service.subaimu.com", "X-Home-Login-Origin": target })[name]; } });
 const script = html => html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)[1];
-const setup = (adapter = "json") => {
+const setup = (adapter = "json", remote) => {
   const session = createSession(), req = request(session);
   let time = 0, decryptions = 0;
-  const entry = { name: "fixture", adapter, enabled: true, targetUrl: target + "/", loginUrl: target + "/login", passwordField: "password", fields: { password: '</script><script>throw Error("injected")</script>' } };
+  const entry = { name: "fixture", adapter, remote, enabled: true, targetUrl: target + "/", loginUrl: target + "/login", passwordField: "password", fields: { password: '</script><script>throw Error("injected")</script>' } };
   const vault = { list: async () => [entry], launch: async () => { decryptions++; return entry; } };
   const bridge = createLoginBridge({ access, vault, now: () => time });
-  const issued = response(); bridge.issue(req, issued, "entry", target + "/", adapter);
-  const ticket = adapter === "metapi" ? issued.body.match(/#([A-Za-z0-9_-]{43})/)[1] : issued.body.match(/name="ticket" value="([^"]+)"/)[1];
+  const issued = response(); bridge.issue(req, issued, "entry", target + "/", adapter, remote);
+  const ticket = (remote ?? ["metapi", "sub2api"].includes(adapter)) ? issued.body.match(/#([A-Za-z0-9_-]{43})/)[1] : issued.body.match(/name="ticket" value="([^"]+)"/)[1];
   const consume = async overrides => {
     const r = { ...request(session), body: { ticket }, ...overrides }, res = response();
     await bridge.consume(r, res, error => { throw error; }); return res;
@@ -105,11 +105,35 @@ test("remote client has no credentials and compiles with exact CORS origin and m
   const f = setup("metapi"), res = response(); f.bridge.client({}, res);
   assert.equal(res.body.includes("injected"), false);
   assert.equal(res.body.includes(f.session), false);
-  assert.match(res.headers["Content-Security-Policy"], /connect-src 'self' https:\/\/subaimu.com;/);
+  assert.match(res.headers["Content-Security-Policy"], /connect-src 'self' https:\/\/subaimu.com https:\/\/api.github.com /);
   assert.match(res.body, /credentials:'omit'/);
   assert.match(res.body, /auth_token_expires_at/);
   assert.match(res.body, /values=new Map/);
   assert.match(res.body, /history.replaceState\(null,'',location.pathname\)/);
   new Script(script(res.body));
   destroySession(f.session);
+});
+
+test("Sub2API and remote CPA use fragment handoff; local CPA keeps native POST", async () => {
+  for (const [adapter, remote] of [["sub2api", undefined], ["cpa", true]]) {
+    const f = setup(adapter, remote);
+    assert.match(f.issued.body, /location.replace/);
+    assert.equal((await f.consume()).code, 404);
+    const accepted = await f.remoteConsume();
+    assert.equal(accepted.code, 200);
+    assert.equal(accepted.body.adapter, adapter);
+    assert.equal((await f.remoteConsume()).code, 404);
+    destroySession(f.session);
+  }
+  const local = setup("cpa");
+  assert.equal((await local.remoteConsume()).code, 404);
+  const accepted = await local.consume();
+  assert.equal(accepted.code, 200);
+  new Script(script(accepted.body));
+  destroySession(local.session);
+  const changed = setup("cpa", true);
+  changed.entry.remote = false;
+  assert.equal((await changed.remoteConsume()).code, 404);
+  assert.equal(changed.decryptions(), 0);
+  destroySession(changed.session);
 });

@@ -40,6 +40,8 @@ node --test tests/*.test.mjs
 
 原生登录成功后，各应用按自己的方式保存会话 Cookie/令牌。CPA 的管理员密钥就是登录凭据，使用当前页面内存覆盖其认证存储，不写浏览器 localStorage；刷新 CPA 页面后请重新从主页点击。其他应用存储的是它们签发的令牌，不是配置中的明文密码。退出主页不会撤销已建立的目标站会话。
 
+MetAPI、Sub2API 和 CPA 支持「远端 Nginx 中转」开关；MetAPI/Sub2API 新建时默认开启，既有本机 CPA 默认关闭，保持原来的 POST 交接。远端模板统一为 `deploy/remote-home-login.nginx.inc`，三个服务都可使用，已有 MetAPI 模板保持兼容。切换中转方式须重新确认凭据；修改账号、密码、网址和开关均可在「自动登录」页面完成。
+
 后续新增服务：先在「网站列表」添加链接，再在「自动登录」填写完全相同的链接和对应登录方式。普通 POST 表单无需目标网关模板；新的 JSON 服务域名需先接入模板，已有本服务器域名无需重复操作。服务升级若改变登录协议，应更新对应适配器并重新验证。
 
 ## 远端 MetAPI
@@ -51,6 +53,14 @@ node --test tests/*.test.mjs
 点击时主页签发 60 秒一次性票据，通过 URL fragment 交接；票据不进入请求 URL/回源日志，远端客户端读取后立即清除 fragment，浏览器直接向 Home 兑换。兑换独立于第三方 Cookie，仍绑定真实的主页会话、精确 IP、User-Agent、目标 Origin 和可信网关；前置请求及实际取密都校验白名单，CORS 只允许已启用的 MetAPI 目标 origin。票据与原有本机 POST 票据不通用，注销、超时、禁用、重放均拒绝。
 
 MetAPI 原生前端将管理员 Token 当作登录凭据。适配器仅在当前文档内存模拟 `auth_token` 和 `auth_token_expires_at`，不向浏览器持久存储写入管理员 Token；有效期沿用当前 MetAPI 的 12 小时。刷新/关闭页面后需重新从主页进入，MetAPI 页面内的退出按钮可清除本次内存状态。后续接口或前端存储键变更须重新验收。
+
+## 远端 Sub2API 与 CPA
+
+Sub2API 选择「Sub2API（邮箱密码）」并开启远端中转。用户名字段填 `email`，用户名填写登录邮箱，密码字段 `password`；接口为目标站 `/api/v1/auth/login`（JSON POST）。只有 `code=0` 且返回 access_token 与 user 时才继续，双因素/验证码仍需原站处理。返回的 access_token、refresh_token、auth_user、token_expires_at 仅当前文档内存保存；按服务器返回的用户角色进入 `/admin/dashboard` 或 `/dashboard`。刷新后重新从主页进入。原账号密码不进入导航网址或浏览器持久存储。
+
+远端 CPA 选择既有「CPA Plus（密钥只在页面内存）」并开启远端中转；接口为目标站 `/usage-service/config`（GET Bearer），后台地址须与主页导航链接相同。密钥通过既有内存适配方式交给原生前端，刷新后重新从主页进入。原有本机 CPA 不开启此开关，保持本机网关和登录行为。
+
+远端 Nginx 配好不含凭据的客户端代理后，实际取密仍由浏览器直接请求 Home，在每次请求时验证白名单、Origin、主页会话和一次性票据。不开启远端开关的 CPA Origin 不会被远端 CORS 放行，票据同时绑定签发时的服务适配器。不能把远端规则部署完成前的模拟测试当作真实公网已接通。
 
 ## SSTP 看板、检测及 HTTP Basic
 
