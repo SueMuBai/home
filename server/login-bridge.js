@@ -7,7 +7,7 @@ const json = data => JSON.stringify(data).replace(/</g, "\\u003c");
 const headers = (res, nonce, remoteHome = "") => res.set({
   "Cache-Control": "private, no-store, max-age=0", Pragma: "no-cache",
   "Referrer-Policy": "strict-origin", "X-Frame-Options": "DENY", "X-Content-Type-Options": "nosniff",
-  "Content-Security-Policy": `default-src 'self'; script-src 'self' 'nonce-${nonce}'; connect-src 'self' ${remoteHome}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action https:`,
+  "Content-Security-Policy": `default-src 'self'; script-src 'self' 'nonce-${nonce}'; connect-src 'self' ${remoteHome}; style-src 'self' 'unsafe-inline'${remoteHome ? " https://fonts.googleapis.com" : ""}; img-src 'self' data: blob:${remoteHome ? " https://api.dicebear.com" : ""}; font-src 'self' data:${remoteHome ? " https://fonts.gstatic.com" : ""}; frame-ancestors 'none'; base-uri 'self'; form-action https:`,
 });
 
 const payloadFor = entry => ({ adapter: entry.adapter, target: entry.targetUrl, login: entry.loginUrl, fields: entry.fields, passwordField: entry.passwordField, usernameField: entry.usernameField });
@@ -112,9 +112,11 @@ const call=async(url,options={})=>{const response=await fetch(url,{credentials:'
   const keys=adapter==='metapi'?['auth_token','auth_token_expires_at']:['cli-proxy-auth','managementKey','apiBase','apiUrl','isLoggedIn'];
   const shim='('+function(seed,names){const values=new Map(Object.entries(seed)),keys=new Set(names);const proto=Storage.prototype,get=proto.getItem,set=proto.setItem,remove=proto.removeItem;proto.getItem=function(k){return this===localStorage&&keys.has(k)?values.get(k)??null:get.call(this,k);};proto.setItem=function(k,v){if(this===localStorage&&keys.has(k)){values.set(k,String(v));return;}return set.call(this,k,v);};proto.removeItem=function(k){if(this===localStorage&&keys.has(k)){values.delete(k);return;}return remove.call(this,k);};}.toString()+')('+JSON.stringify(seed).replace(/</g,'\\u003c')+','+JSON.stringify(keys)+');';
   const doc=new DOMParser().parseFromString(html,'text/html');
-  for(const node of doc.querySelectorAll('script'))node.nonce='${nonce}';
-  const bootstrap=doc.createElement('script');bootstrap.nonce='${nonce}';bootstrap.textContent=shim;doc.head.prepend(bootstrap);
-  html=doc.documentElement.outerHTML;
+  // Browsers hide the nonce attribute during DOM serialization. Use a marker
+  // until serialization, then restore the real attribute for the new document.
+  for(const node of doc.querySelectorAll('script')){node.removeAttribute('nonce');node.setAttribute('data-home-login-nonce','${nonce}');}
+  const bootstrap=doc.createElement('script');bootstrap.setAttribute('data-home-login-nonce','${nonce}');bootstrap.textContent=shim;doc.head.prepend(bootstrap);
+  html=doc.documentElement.outerHTML.replaceAll('data-home-login-nonce="${nonce}"','nonce="${nonce}"');
   const target=cfg.target;cfg=null;history.replaceState(null,'',target);
   document.open();document.write(html);document.close();return;
  }
