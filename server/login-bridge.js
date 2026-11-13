@@ -45,7 +45,7 @@ export const createLoginBridge = ({ access, vault, now = Date.now, ttl = 60_000 
 };
 
 const sendBridge = (res, entry) => {
-  const nonce = randomBytes(18).toString("base64"), payload = { adapter: entry.adapter, target: entry.targetUrl, login: entry.loginUrl, fields: entry.fields, passwordField: entry.passwordField };
+  const nonce = randomBytes(18).toString("base64"), payload = { adapter: entry.adapter, target: entry.targetUrl, login: entry.loginUrl, fields: entry.fields, passwordField: entry.passwordField, usernameField: entry.usernameField };
   headers(res, nonce).type("html").send(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>正在登录 ${escape(entry.name)}</title><p id="status">正在登录 ${escape(entry.name)}…</p><a href="${escape(entry.targetUrl)}">打开原登录页面</a><script nonce="${nonce}">
 let cfg=${json(payload)};
 const write=(key,value)=>localStorage.setItem(key,String(value));
@@ -53,6 +53,17 @@ const call=async(url,options={})=>{const response=await fetch(url,{credentials:'
 (async()=>{
  if(new URL(cfg.login).origin!==location.origin||new URL(cfg.target).origin!==location.origin)throw Error('登录站点不符');
  const adapter=cfg.adapter;
+ if(adapter==='basic'){
+  await new Promise((resolve,reject)=>{
+   const request=new XMLHttpRequest();
+   request.open('GET',cfg.login,true,cfg.fields[cfg.usernameField]||'',cfg.fields[cfg.passwordField]);
+   request.withCredentials=true;request.timeout=30000;
+   request.onload=()=>request.status>=200&&request.status<300?resolve():reject(Error('登录失败'));
+   request.onerror=request.ontimeout=()=>reject(Error('无法连接登录服务'));
+   request.send();
+  });
+  const target=cfg.target;cfg=null;location.replace(target);return;
+ }
  if(adapter==='cpa'){
   const key=cfg.fields[cfg.passwordField];
   await call(cfg.login,{headers:{Authorization:'Bearer '+key}});

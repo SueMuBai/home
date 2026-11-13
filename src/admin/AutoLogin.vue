@@ -9,12 +9,12 @@
       <el-button @click="edit(item)">编辑</el-button>
       <el-button type="danger" plain @click="remove(item)">删除</el-button>
     </el-card>
-    <el-dialog v-model="show" :title="draft.id ? '编辑自动登录' : '添加自动登录'" width="min(620px, 94vw)" destroy-on-close @closed="draft.password = ''; extra = '{}'">
-      <el-form label-position="top" @submit.prevent="save">
+    <el-dialog v-model="show" class="auto-login-dialog" :title="draft.id ? '编辑自动登录' : '添加自动登录'" width="min(620px, 94vw)" top="5vh" append-to-body destroy-on-close @closed="draft.password = ''; extra = '{}'">
+      <el-form id="auto-login-form" label-position="top" @submit.prevent="save">
         <el-form-item label="服务名称"><el-input v-model="draft.name" maxlength="30" /></el-form-item>
         <el-form-item label="登录方式"><el-select v-model="draft.adapter"><el-option v-for="option in adapters" :key="option.value" :label="option.label" :value="option.value" /></el-select></el-form-item>
         <el-form-item label="对应的网站链接"><el-input v-model="draft.targetUrl" placeholder="https://example.com/dashboard" /></el-form-item>
-        <el-form-item label="登录表单提交地址"><el-input v-model="draft.loginUrl" placeholder="https://example.com/login" /></el-form-item>
+        <el-form-item label="登录接口地址"><el-input v-model="draft.loginUrl" placeholder="https://example.com/login" /></el-form-item>
         <el-form-item label="用户名字段（仅密码登录可留空）"><el-input v-model="draft.usernameField" placeholder="例如 username" /></el-form-item>
         <el-form-item label="用户名"><el-input v-model="draft.username" autocomplete="off" /></el-form-item>
         <el-form-item label="密码字段"><el-input v-model="draft.passwordField" placeholder="例如 password" /></el-form-item>
@@ -22,8 +22,11 @@
         <el-form-item label="附加表单字段（JSON，新建或修改密码时保存）"><el-input v-model="extra" type="textarea" :rows="3" placeholder='例如 {"remember": "true"}' /></el-form-item>
         <el-form-item><el-switch v-model="draft.enabled" active-text="启用自动登录" /></el-form-item>
         <p>对应的网站链接须与「网站列表」的网址一致。修改登录地址或字段时，请重新填写密码和附加参数。</p>
-        <el-button type="primary" native-type="submit" :loading="busy">保存</el-button>
       </el-form>
+      <template #footer>
+        <el-button @click="show = false">取消</el-button>
+        <el-button type="primary" native-type="submit" form="auto-login-form" :loading="busy">保存</el-button>
+      </template>
     </el-dialog>
   </div>
 </template>
@@ -34,7 +37,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { adminApi } from "./api";
 
 const items = ref([]), show = ref(false), draft = ref({}), extra = ref("{}"), busy = ref(false);
-const adapters = [{value:'form',label:'普通 POST 表单'}, {value:'json',label:'JSON + 会话 Cookie'}, ...['3x-ui','komari','astrbot','napcat','new-api','miaomiaowu','vm2api','memoirs','cpa'].map(value=>({value,label:({'miaomiaowu':'妙妙屋','memoirs':'光阴叙','cpa':'CPA Plus（密钥只在页面内存）'})[value]||value}))];
+const adapters = [{value:'form',label:'普通 POST 表单'}, {value:'basic',label:'HTTP Basic 认证'}, {value:'json',label:'JSON + 会话 Cookie'}, ...['3x-ui','komari','astrbot','napcat','new-api','miaomiaowu','vm2api','memoirs','cpa'].map(value=>({value,label:({'miaomiaowu':'妙妙屋','memoirs':'光阴叙','cpa':'CPA Plus（密钥只在页面内存）'})[value]||value}))];
 const load = async () => { items.value = await adminApi.listLogins(); };
 const edit = (entry = {}) => {
   draft.value = { name: "", targetUrl: "", loginUrl: "", username: "", usernameField: "", passwordField: "password", adapter: "form", enabled: true, ...entry, password: "" };
@@ -64,4 +67,7 @@ onMounted(() => load().catch(error => ElMessage.error(error.message)));
 p { color: #aeb7c4; line-height: 1.8; overflow-wrap: anywhere; }
 .entry { margin-top: 14px; background: #ffffff09; border-color: #ffffff15; }
 .entry span { margin-left: 16px; color: #9ca3af; }
+:global(.auto-login-dialog) { display: flex; flex-direction: column; max-height: 90dvh; margin-bottom: 5vh; --el-dialog-bg-color: #17221f; border: 1px solid #ffffff18; border-radius: 12px; box-shadow: 0 20px 60px #00000080; }
+:global(.auto-login-dialog .el-dialog__body) { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+:global(.auto-login-dialog .el-dialog__header), :global(.auto-login-dialog .el-dialog__footer) { flex-shrink: 0; }
 </style>

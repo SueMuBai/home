@@ -53,7 +53,7 @@ test("handoff expiry boundary, logout revocation and concurrent consumption", as
 });
 
 test("all native adapter pages compile; CPA password stays out of browser persistent storage", async () => {
-  for (const adapter of ["3x-ui", "komari", "astrbot", "napcat", "new-api", "miaomiaowu", "vm2api", "memoirs", "cpa"]) {
+  for (const adapter of ["basic", "3x-ui", "komari", "astrbot", "napcat", "new-api", "miaomiaowu", "vm2api", "memoirs", "cpa"]) {
     const f = setup(adapter), res = await f.consume(); new Script(script(res.body)); destroySession(f.session);
     if (adapter === "cpa") { assert.match(res.body, /values=new Map/); assert.match(res.body, /this===localStorage&&keys.has/); }
   }
