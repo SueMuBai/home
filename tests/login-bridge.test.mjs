@@ -17,7 +17,7 @@ const setup = (adapter = "json", remote) => {
   const vault = { list: async () => [entry], launch: async () => { decryptions++; return entry; } };
   const bridge = createLoginBridge({ access, vault, now: () => time });
   const issued = response(); bridge.issue(req, issued, "entry", target + "/", adapter, remote);
-  const ticket = (remote ?? ["metapi", "sub2api"].includes(adapter)) ? issued.body.match(/#([A-Za-z0-9_-]{43})/)[1] : issued.body.match(/name="ticket" value="([^"]+)"/)[1];
+  const ticket = (remote ?? ["metapi", "sub2api", "grok2api"].includes(adapter)) ? issued.body.match(/#([A-Za-z0-9_-]{43})/)[1] : issued.body.match(/name="ticket" value="([^"]+)"/)[1];
   const consume = async overrides => {
     const r = { ...request(session), body: { ticket }, ...overrides }, res = response();
     await bridge.consume(r, res, error => { throw error; }); return res;
@@ -114,8 +114,8 @@ test("remote client has no credentials and compiles with exact CORS origin and m
   destroySession(f.session);
 });
 
-test("Sub2API, remote CPA and remote New API use fragment handoff; local CPA keeps native POST", async () => {
-  for (const [adapter, remote] of [["sub2api", undefined], ["cpa", true], ["new-api", true]]) {
+test("remote password and token adapters use fragment handoff; local CPA keeps native POST", async () => {
+  for (const [adapter, remote] of [["sub2api", undefined], ["cpa", true], ["new-api", true], ["grok2api", undefined]]) {
     const f = setup(adapter, remote);
     assert.match(f.issued.body, /location.replace/);
     assert.equal((await f.consume()).code, 404);
@@ -136,4 +136,34 @@ test("Sub2API, remote CPA and remote New API use fragment handoff; local CPA kee
   assert.equal((await changed.remoteConsume()).code, 404);
   assert.equal(changed.decryptions(), 0);
   destroySession(changed.session);
+});
+
+test("Grok2API requires a complete login result and relies on native cookies without persisting credentials", async () => {
+  for (const result of [
+    { data: { admin: { id: "fixture-admin" }, tokens: { accessToken: "fixture-token" } } },
+    { data: { admin: { id: "fixture-admin" }, tokens: {} } },
+    { data: { tokens: { accessToken: "fixture-token" } } },
+    {},
+  ]) {
+    const f = setup("grok2api", false), res = await f.consume();
+    const redirects = [], calls = [], status = { textContent: "" };
+    new Script(script(res.body)).runInNewContext({
+      URL, URLSearchParams,
+      location: { origin: target, replace: url => redirects.push(url) },
+      fetch: async (url, options) => { calls.push({ url, options }); return { ok: true, json: async () => result }; },
+      localStorage: { setItem() { assert.fail("Grok2API credentials must not be written to persistent storage"); } },
+      document: { getElementById: () => status },
+      addEventListener() {},
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, f.entry.loginUrl);
+    assert.equal(calls[0].options.method, "POST");
+    assert.equal(calls[0].options.credentials, "same-origin");
+    assert.deepEqual(JSON.parse(calls[0].options.body), f.entry.fields);
+    const complete = Boolean(result.data?.admin?.id && result.data?.tokens?.accessToken);
+    assert.deepEqual(redirects, complete ? [f.entry.targetUrl] : []);
+    assert.equal(Boolean(status.textContent), !complete);
+    destroySession(f.session);
+  }
 });

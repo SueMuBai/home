@@ -64,6 +64,14 @@ Sub2API 选择「Sub2API（邮箱密码）」并开启远端中转。用户名�
 
 远端 Nginx 配好不含凭据的客户端代理后，实际取密仍由浏览器直接请求 Home，在每次请求时验证白名单、Origin、主页会话和一次性票据。不开启远端开关的 CPA Origin 不会被远端 CORS 放行，票据同时绑定签发时的服务适配器。不能把远端规则部署完成前的模拟测试当作真实公网已接通。
 
+## 远端 Grok2API
+
+Grok2API 选择「Grok2API（用户名密码）」并开启远端中转。当前目标 `https://grok.1692958.xyz/`，接口 `/api/admin/v1/auth/login`，JSON POST 的字段为 `username` 和 `password`。登录响应必须包含 `data.admin.id` 和 `data.tokens.accessToken` 才继续；不把账号密码或访问令牌写入 localStorage/sessionStorage，认证 Cookie 则由原站签发和管理。
+
+该版本原生前端通过 HttpOnly 刷新 Cookie 调用 `/api/admin/v1/auth/refresh`，再使用内存访问令牌请求 `/api/admin/v1/me`。交接页提交成功后进入原站，由原站恢复会话；页面刷新沿用原生 Cookie，不采用 CPA/MetAPI/Sub2API 的文档内存存储覆盖。
+
+远端 Nginx 使用相同的 `deploy/remote-home-login.nginx.inc`；已接入该通用规则的域名无需更改规则内容。新域名必须在实际 HTTP/HTTPS 回源 server 接入并校验重载，完成后从真实主页点击验收。主页的来源白名单、活动会话与 60 秒一次性票据检查保持不变。
+
 ## SSTP 看板、检测及 HTTP Basic
 
 SSTP 的 `/admin` 仍使用普通 POST 表单；`/results/` 和 `/checker` 是两个独立导航配置，登录方式选择 HTTP Basic。通过同一个一次性票据交接到目标站后，浏览器在目标 origin 使用 XMLHttpRequest 的原生认证参数完成挑战，再跳转到受保护页面。用户密码保留在后端密文中，点击时进入浏览器内存；导航链接和地址栏不携带凭据，也不写 localStorage/sessionStorage。浏览器按原生 HTTP 认证缓存管理本次会话，页面刷新和后续数据请求可继续使用；退出主页不撤销该原生缓存。目标站的 Basic/Bearer 认证规则和检测服务无需更改。

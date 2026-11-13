@@ -84,10 +84,10 @@ export const createVault = ({ file = path.join(dataDir, "login-vault.json"), key
         adapter: input.adapter || old?.adapter || "form",
         enabled: input.enabled !== false,
       };
-      if (!["form", "basic", "json", "3x-ui", "komari", "astrbot", "napcat", "new-api", "miaomiaowu", "vm2api", "memoirs", "cpa", "metapi", "sub2api"].includes(entry.adapter)) invalid("登录方式无效");
+      if (!["form", "basic", "json", "3x-ui", "komari", "astrbot", "napcat", "new-api", "miaomiaowu", "vm2api", "memoirs", "cpa", "metapi", "sub2api", "grok2api"].includes(entry.adapter)) invalid("登录方式无效");
       if (input.remote !== undefined && typeof input.remote !== "boolean") invalid("远端中转开关无效");
-      entry.remote = input.remote ?? old?.remote ?? ["metapi", "sub2api"].includes(entry.adapter);
-      if (entry.remote && !["metapi", "sub2api", "cpa", "new-api"].includes(entry.adapter)) invalid("当前登录方式不支持远端中转");
+      entry.remote = input.remote ?? old?.remote ?? ["metapi", "sub2api", "grok2api"].includes(entry.adapter);
+      if (entry.remote && !["metapi", "sub2api", "cpa", "new-api", "grok2api"].includes(entry.adapter)) invalid("当前登录方式不支持远端中转");
       if (!entry.name) invalid("名称不能为空");
       if (new URL(entry.targetUrl).origin !== new URL(entry.loginUrl).origin) invalid("登录接口和目标后台必须属于同一站点");
       if (data.entries.some(x => x.id !== entry.id && canonical(x.targetUrl) === canonical(entry.targetUrl))) invalid("目标后台已有自动登录配置");
@@ -103,7 +103,7 @@ export const createVault = ({ file = path.join(dataDir, "login-vault.json"), key
         entry.sealed = seal(entry, { password, extraFields: extra });
       } else {
         if (!old) invalid("首次配置需要填写密码");
-        if (entry.loginUrl !== old.loginUrl || entry.targetUrl !== old.targetUrl || entry.passwordField !== old.passwordField || entry.usernameField !== old.usernameField || entry.adapter !== (old.adapter || "form") || entry.remote !== (old.remote ?? ["metapi", "sub2api"].includes(old.adapter))) invalid("修改登录地址或字段时需要重新填写密码和附加参数");
+        if (entry.loginUrl !== old.loginUrl || entry.targetUrl !== old.targetUrl || entry.passwordField !== old.passwordField || entry.usernameField !== old.usernameField || entry.adapter !== (old.adapter || "form") || entry.remote !== (old.remote ?? ["metapi", "sub2api", "grok2api"].includes(old.adapter))) invalid("修改登录地址或字段时需要重新填写密码和附加参数");
         entry.sealed = old.sealed;
       }
       if (index < 0) data.entries.push(entry); else data.entries[index] = entry;

@@ -13,8 +13,8 @@ const headers = (res, nonce, remoteHome = "") => res.set({
 });
 
 const payloadFor = entry => ({ adapter: entry.adapter, target: entry.targetUrl, login: entry.loginUrl, fields: entry.fields, passwordField: entry.passwordField, usernameField: entry.usernameField });
-const remoteAdapters = new Set(["metapi", "sub2api", "cpa", "new-api"]);
-const usesRemoteHandoff = entry => remoteAdapters.has(entry.adapter) && (entry.remote ?? ["metapi", "sub2api"].includes(entry.adapter));
+const remoteAdapters = new Set(["metapi", "sub2api", "cpa", "new-api", "grok2api"]);
+const usesRemoteHandoff = entry => remoteAdapters.has(entry.adapter) && (entry.remote ?? ["metapi", "sub2api", "grok2api"].includes(entry.adapter));
 
 export const createLoginBridge = ({ access, vault, now = Date.now, ttl = 60_000 }) => {
   const tickets = new Map();
@@ -144,6 +144,7 @@ const call=async(url,options={})=>{const response=await fetch(url,{credentials:'
  if(adapter==='napcat'){const token=data.data?.credential||data.data?.Credential;if(data.code!==0||!token)throw Error('登录失败或需要双因素验证');write('token',JSON.stringify(token));}
  if(adapter==='astrbot'){if(!data.data?.token)throw Error('登录失败或需要额外验证');write('token',data.data.token);write('user',data.data.username);}
  if(adapter==='new-api'){if(data.data?.user?.id){if(!data.data.access_token)throw Error('账号验证未完成');}else{if(!data.data?.id)throw Error('账号验证未完成');write('user',JSON.stringify(data.data));}}
+ if(adapter==='grok2api'){if(!data.data?.admin?.id||!data.data?.tokens?.accessToken)throw Error('账号验证未完成');}
  if(adapter==='miaomiaowu'){if(!data.token)throw Error('登录失败或需要双因素验证');document.cookie='traffic_info_access_token='+JSON.stringify(data.token)+'; Path=/; Secure; SameSite=Lax';}
  if(adapter==='vm2api'){if(!data.token)throw Error('账号验证未完成');write('kin_console_token',data.token);write('kin_console_user',data.user);}
  const target=adapter==='3x-ui'?new URL('panel/',cfg.login).href:adapter==='komari'?new URL('/admin',cfg.target).href:cfg.target;cfg=null;location.replace(target);

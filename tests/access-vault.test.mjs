@@ -88,6 +88,9 @@ test("remote handoff configuration persists and changing it requires credential 
   const vault = vaultAt("remote-metadata.json");
   const sub = await vault.save({ ...input("sub2api"), adapter: "sub2api", usernameField: "email" });
   assert.equal(sub.remote, true);
+  const grok = await vault.save({ ...input("grok2api"), adapter: "grok2api" });
+  assert.equal(grok.remote, true);
+  assert.equal((await vaultAt("remote-metadata.json").launch(grok.id)).fields.password, input().password);
   const cpa = await vault.save({ ...input("cpa"), adapter: "cpa" });
   assert.equal(cpa.remote, false);
   await assert.rejects(() => vault.save({ ...cpa, remote: true, password: "" }, cpa.id));
