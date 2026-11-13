@@ -7,21 +7,26 @@ import { createLoginBridge } from "../server/login-bridge.js";
 
 const home = "https://subaimu.com", target = "https://service.subaimu.com";
 const access = createAccess({ adminPath: "/test_random_admin_1234567890", allowedIps: ["185.93.71.64"], trustedProxies: ["127.0.0.1"], origin: home });
-const response = () => ({ headers: {}, code: 200, set(key, value) { if (typeof key === "object") Object.assign(this.headers, key); else this.headers[key] = value; return this; }, type() { return this; }, send(body) { this.body = body; return this; }, sendStatus(code) { this.code = code; return this; } });
+const response = () => ({ headers: {}, code: 200, set(key, value) { if (typeof key === "object") Object.assign(this.headers, key); else this.headers[key] = value; return this; }, type() { return this; }, send(body) { this.body = body; return this; }, json(body) { this.body = body; return this; }, sendStatus(code) { this.code = code; return this; } });
 const request = session => ({ ip: "185.93.71.64", socket: { remoteAddress: "127.0.0.1" }, headers: { cookie: `home_admin_session=${session}` }, get(name) { return ({ "User-Agent": "fixture-browser", "Origin": home, "Host": "service.subaimu.com", "X-Home-Login-Origin": target })[name]; } });
 const script = html => html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)[1];
 const setup = (adapter = "json") => {
   const session = createSession(), req = request(session);
   let time = 0, decryptions = 0;
-  const vault = { launch: async () => { decryptions++; return { name: "fixture", adapter, targetUrl: target + "/", loginUrl: target + "/login", passwordField: "password", fields: { password: '</script><script>throw Error("injected")</script>' } }; } };
+  const entry = { name: "fixture", adapter, enabled: true, targetUrl: target + "/", loginUrl: target + "/login", passwordField: "password", fields: { password: '</script><script>throw Error("injected")</script>' } };
+  const vault = { list: async () => [entry], launch: async () => { decryptions++; return entry; } };
   const bridge = createLoginBridge({ access, vault, now: () => time });
-  const issued = response(); bridge.issue(req, issued, "entry", target + "/");
-  const ticket = issued.body.match(/name="ticket" value="([^"]+)"/)[1];
+  const issued = response(); bridge.issue(req, issued, "entry", target + "/", adapter);
+  const ticket = adapter === "metapi" ? issued.body.match(/#([A-Za-z0-9_-]{43})/)[1] : issued.body.match(/name="ticket" value="([^"]+)"/)[1];
   const consume = async overrides => {
     const r = { ...request(session), body: { ticket }, ...overrides }, res = response();
     await bridge.consume(r, res, error => { throw error; }); return res;
   };
-  return { bridge, issued, consume, session, decryptions: () => decryptions, setTime: value => { time = value; } };
+  const remoteRequest = overrides => ({ ...request(session), body: { ticket }, get(name) { return ({ "User-Agent": "fixture-browser", "Origin": target, "Host": "subaimu.com" })[name]; }, ...overrides });
+  const remoteConsume = async overrides => {
+    const res = response(); await bridge.remoteConsume(remoteRequest(overrides), res, error => { throw error; }); return res;
+  };
+  return { bridge, entry, issued, consume, remoteConsume, remoteRequest, session, decryptions: () => decryptions, setTime: value => { time = value; } };
 };
 
 test("handoff issues no credentials; origin, IP, peer, UA, host and session must match", async () => {
@@ -57,4 +62,54 @@ test("all native adapter pages compile; CPA password stays out of browser persis
     const f = setup(adapter), res = await f.consume(); new Script(script(res.body)); destroySession(f.session);
     if (adapter === "cpa") { assert.match(res.body, /values=new Map/); assert.match(res.body, /this===localStorage&&keys.has/); }
   }
+});
+
+test("remote MetAPI tickets bind origin, IP, UA, proxy, host and active Home session", async () => {
+  const f = setup("metapi");
+  assert.equal(f.decryptions(), 0);
+  assert.equal(f.issued.body.includes("injected"), false);
+  assert.equal((await f.consume()).code, 404);
+  const preflight = response();
+  await f.bridge.remoteOptions(f.remoteRequest(), preflight, error => { throw error; });
+  assert.equal(preflight.code, 204);
+  assert.equal(preflight.headers["Access-Control-Allow-Origin"], target);
+  assert.equal(preflight.headers["Access-Control-Allow-Credentials"], undefined);
+  for (const override of [
+    { ip: "198.51.100.1" }, { socket: { remoteAddress: "127.0.0.2" } },
+    ...["Origin", "Host", "User-Agent"].map(name => ({ get: key => key === name ? "wrong" : f.remoteRequest().get(key) })),
+    { body: { ticket: "unknown" } },
+  ]) assert.equal((await f.remoteConsume(override)).code, 404);
+  assert.equal(f.decryptions(), 0);
+  const accepted = await f.remoteConsume();
+  assert.equal(accepted.code, 200);
+  assert.equal(accepted.body.adapter, "metapi");
+  assert.equal(accepted.body.fields.password, f.entry.fields.password);
+  assert.match(accepted.headers["Cache-Control"], /no-store/);
+  assert.equal((await f.remoteConsume()).code, 404);
+  assert.equal(f.decryptions(), 1);
+  destroySession(f.session);
+});
+
+test("remote MetAPI rejects expiry, logout, disabled or changed entries, and concurrent replays", async () => {
+  const expiry = setup("metapi"); expiry.setTime(60_000); assert.equal((await expiry.remoteConsume()).code, 404); assert.equal(expiry.decryptions(), 0); destroySession(expiry.session);
+  const logout = setup("metapi"); destroySession(logout.session); assert.equal((await logout.remoteConsume()).code, 404);
+  const disabled = setup("metapi"); disabled.entry.enabled = false; assert.equal((await disabled.remoteConsume()).code, 404); assert.equal(disabled.decryptions(), 0); destroySession(disabled.session);
+  const changed = setup("metapi"); changed.entry.adapter = "json"; assert.equal((await changed.remoteConsume()).code, 404); assert.equal(changed.decryptions(), 0); destroySession(changed.session);
+  const local = setup(); assert.equal((await local.remoteConsume()).code, 404); assert.equal(local.decryptions(), 0); destroySession(local.session);
+  const concurrent = setup("metapi");
+  const results = await Promise.all(Array.from({ length: 20 }, () => concurrent.remoteConsume()));
+  assert.equal(results.filter(x => x.code === 200).length, 1); assert.equal(concurrent.decryptions(), 1); destroySession(concurrent.session);
+});
+
+test("remote client has no credentials and compiles with exact CORS origin and memory-only token storage", () => {
+  const f = setup("metapi"), res = response(); f.bridge.client({}, res);
+  assert.equal(res.body.includes("injected"), false);
+  assert.equal(res.body.includes(f.session), false);
+  assert.match(res.headers["Content-Security-Policy"], /connect-src 'self' https:\/\/subaimu.com;/);
+  assert.match(res.body, /credentials:'omit'/);
+  assert.match(res.body, /auth_token_expires_at/);
+  assert.match(res.body, /values=new Map/);
+  assert.match(res.body, /history.replaceState\(null,'',location.pathname\)/);
+  new Script(script(res.body));
+  destroySession(f.session);
 });

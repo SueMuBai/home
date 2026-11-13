@@ -1,7 +1,7 @@
 <template>
   <div class="auto-login">
     <p>在白名单网络下登录主页后，点击网站卡片即可使用这里的配置。已保存的密码不会显示；编辑时密码留空表示保留。</p>
-    <p>选择服务对应的登录方式。JSON 登录需在目标站网关接入交接入口；验证码或双因素验证仍须在原页面完成。</p>
+    <p>选择服务对应的登录方式。JSON 和 MetAPI 登录需在目标站网关接入交接入口；验证码或双因素验证仍须在原页面完成。</p>
     <el-button type="primary" @click="edit()">添加服务</el-button>
     <el-card v-for="item in items" :key="item.id" class="entry">
       <strong>{{ item.name }}</strong><span>{{ item.enabled ? '已启用' : '已停用' }}</span>
@@ -13,6 +13,7 @@
       <el-form id="auto-login-form" label-position="top" @submit.prevent="save">
         <el-form-item label="服务名称"><el-input v-model="draft.name" maxlength="30" /></el-form-item>
         <el-form-item label="登录方式"><el-select v-model="draft.adapter"><el-option v-for="option in adapters" :key="option.value" :label="option.label" :value="option.value" /></el-select></el-form-item>
+        <p v-if="draft.adapter === 'metapi'">MetAPI 使用管理员 Token，请填在密码栏；用户名留空，接口为 /api/settings/auth/info。Token 仅在本次后台页面内存中使用，刷新后请重新从主页进入。远端 Nginx 需按部署说明接入 /.home-login。</p>
         <el-form-item label="对应的网站链接"><el-input v-model="draft.targetUrl" placeholder="https://example.com/dashboard" /></el-form-item>
         <el-form-item label="登录接口地址"><el-input v-model="draft.loginUrl" placeholder="https://example.com/login" /></el-form-item>
         <el-form-item label="用户名字段（仅密码登录可留空）"><el-input v-model="draft.usernameField" placeholder="例如 username" /></el-form-item>
@@ -37,7 +38,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { adminApi } from "./api";
 
 const items = ref([]), show = ref(false), draft = ref({}), extra = ref("{}"), busy = ref(false);
-const adapters = [{value:'form',label:'普通 POST 表单'}, {value:'basic',label:'HTTP Basic 认证'}, {value:'json',label:'JSON + 会话 Cookie'}, ...['3x-ui','komari','astrbot','napcat','new-api','miaomiaowu','vm2api','memoirs','cpa'].map(value=>({value,label:({'miaomiaowu':'妙妙屋','memoirs':'光阴叙','cpa':'CPA Plus（密钥只在页面内存）'})[value]||value}))];
+const adapters = [{value:'form',label:'普通 POST 表单'}, {value:'basic',label:'HTTP Basic 认证'}, {value:'json',label:'JSON + 会话 Cookie'}, ...['3x-ui','komari','astrbot','napcat','new-api','miaomiaowu','vm2api','memoirs','cpa','metapi'].map(value=>({value,label:({'miaomiaowu':'妙妙屋','memoirs':'光阴叙','cpa':'CPA Plus（密钥只在页面内存）','metapi':'MetAPI（管理员 Token）'})[value]||value}))];
 const load = async () => { items.value = await adminApi.listLogins(); };
 const edit = (entry = {}) => {
   draft.value = { name: "", targetUrl: "", loginUrl: "", username: "", usernameField: "", passwordField: "password", adapter: "form", enabled: true, ...entry, password: "" };

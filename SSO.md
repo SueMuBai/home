@@ -42,6 +42,16 @@ node --test tests/*.test.mjs
 
 后续新增服务：先在「网站列表」添加链接，再在「自动登录」填写完全相同的链接和对应登录方式。普通 POST 表单无需目标网关模板；新的 JSON 服务域名需先接入模板，已有本服务器域名无需重复操作。服务升级若改变登录协议，应更新对应适配器并重新验证。
 
+## 远端 MetAPI
+
+登录方式选择「MetAPI（管理员 Token）」，目标为 `https://met.1692958.xyz/`，接口为 `https://met.1692958.xyz/api/settings/auth/info`；用户名字段与用户名留空，密码栏填现有管理员 Token，密码字段保留 `password`。登录调用原站 `GET` 接口并携带 `Authorization: Bearer …`，没有账号密码 POST 表单。
+
+远端 Nginx 在实际 HTTP/HTTPS 回源的 `server` 内加入 [metapi-home-login.nginx.inc](deploy/metapi-home-login.nginx.inc)，先 `nginx -t` 再 reload。该 location 仅代理不含凭据的公共客户端页面，Home 更新后自动获取新版本；启用 HTTPS 上游证书校验，CA 文件使用 `/etc/ssl/certs/ca-certificates.crt`。必须保留浏览器地址 `https://met.1692958.xyz/.home-login`，不要返回重定向到主页域名。现有通用原生 POST 网关模板不适用于跨服务器的 MetAPI。
+
+点击时主页签发 60 秒一次性票据，通过 URL fragment 交接；票据不进入请求 URL/回源日志，远端客户端读取后立即清除 fragment，浏览器直接向 Home 兑换。兑换独立于第三方 Cookie，仍绑定真实的主页会话、精确 IP、User-Agent、目标 Origin 和可信网关；前置请求及实际取密都校验白名单，CORS 只允许已启用的 MetAPI 目标 origin。票据与原有本机 POST 票据不通用，注销、超时、禁用、重放均拒绝。
+
+MetAPI 原生前端将管理员 Token 当作登录凭据。适配器仅在当前文档内存模拟 `auth_token` 和 `auth_token_expires_at`，不向浏览器持久存储写入管理员 Token；有效期沿用当前 MetAPI 的 12 小时。刷新/关闭页面后需重新从主页进入，MetAPI 页面内的退出按钮可清除本次内存状态。后续接口或前端存储键变更须重新验收。
+
 ## SSTP 看板、检测及 HTTP Basic
 
 SSTP 的 `/admin` 仍使用普通 POST 表单；`/results/` 和 `/checker` 是两个独立导航配置，登录方式选择 HTTP Basic。通过同一个一次性票据交接到目标站后，浏览器在目标 origin 使用 XMLHttpRequest 的原生认证参数完成挑战，再跳转到受保护页面。用户密码保留在后端密文中，点击时进入浏览器内存；导航链接和地址栏不携带凭据，也不写 localStorage/sessionStorage。浏览器按原生 HTTP 认证缓存管理本次会话，页面刷新和后续数据请求可继续使用；退出主页不撤销该原生缓存。目标站的 Basic/Bearer 认证规则和检测服务无需更改。

@@ -142,7 +142,7 @@ export const createApi = ({ access, vault, bridge }) => {
   api.get("/launch/:id", requireAdmin, wrap(async (req, res) => {
     const metadata = (await vault.list()).find(entry => entry.id === req.params.id && entry.enabled);
     if (!metadata) return res.sendStatus(404);
-    if (metadata.adapter && metadata.adapter !== "form") return bridge.issue(req, res, metadata.id, metadata.targetUrl);
+    if (metadata.adapter && metadata.adapter !== "form") return bridge.issue(req, res, metadata.id, metadata.targetUrl, metadata.adapter);
     const entry = await vault.launch(req.params.id);
     if (!entry) return res.sendStatus(404);
     sendLoginForm(res, entry);

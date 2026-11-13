@@ -4,29 +4,37 @@ import { getSession } from "./auth.js";
 
 const escape = text => String(text).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 const json = data => JSON.stringify(data).replace(/</g, "\\u003c");
-const headers = (res, nonce) => res.set({
+const headers = (res, nonce, remoteHome = "") => res.set({
   "Cache-Control": "private, no-store, max-age=0", Pragma: "no-cache",
   "Referrer-Policy": "strict-origin", "X-Frame-Options": "DENY", "X-Content-Type-Options": "nosniff",
-  "Content-Security-Policy": `default-src 'self'; script-src 'self' 'nonce-${nonce}'; connect-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action https:`,
+  "Content-Security-Policy": `default-src 'self'; script-src 'self' 'nonce-${nonce}'; connect-src 'self' ${remoteHome}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action https:`,
 });
+
+const payloadFor = entry => ({ adapter: entry.adapter, target: entry.targetUrl, login: entry.loginUrl, fields: entry.fields, passwordField: entry.passwordField, usernameField: entry.usernameField });
 
 export const createLoginBridge = ({ access, vault, now = Date.now, ttl = 60_000 }) => {
   const tickets = new Map();
   const prune = () => { for (const [key, item] of tickets) if (item.expires <= now()) tickets.delete(key); };
-  const issue = (req, res, id, targetUrl) => {
+  const issue = (req, res, id, targetUrl, adapter = "json") => {
     prune();
     if (tickets.size >= 1000) return res.sendStatus(429);
     const ticket = randomBytes(32).toString("base64url"), nonce = randomBytes(18).toString("base64");
-    tickets.set(ticket, { id, session: getSession(req).token, ip: normalizeIp(req.ip), ua: req.get("User-Agent") || "", target: new URL(targetUrl).origin, expires: now() + ttl });
+    const remote = adapter === "metapi";
+    tickets.set(ticket, { id, session: getSession(req).token, ip: normalizeIp(req.ip), ua: req.get("User-Agent") || "", target: new URL(targetUrl).origin, remote, expires: now() + ttl });
     headers(res, nonce);
     res.set("Content-Security-Policy", `default-src 'none'; script-src 'nonce-${nonce}'; form-action ${new URL(targetUrl).origin}; frame-ancestors 'none'; base-uri 'none'`);
+    if (remote) {
+      // The fragment never enters nginx access logs or a Referer header.
+      const destination = new URL("/.home-login", targetUrl); destination.hash = ticket;
+      return res.type("html").send(`<!doctype html><meta charset="utf-8"><title>正在登录</title><p>正在打开登录服务…</p><script nonce="${nonce}">location.replace(${json(destination.href)});</script>`);
+    }
     res.type("html").send(`<!doctype html><meta charset="utf-8"><title>正在登录</title><p>正在打开登录服务…</p><form id="handoff" method="post" action="${escape(new URL("/.home-login", targetUrl).href)}"><input type="hidden" name="ticket" value="${escape(ticket)}"></form><script nonce="${nonce}">document.getElementById('handoff').submit();</script>`);
   };
   const consume = async (req, res, next) => {
     try {
       prune();
       const ticket = req.body?.ticket, item = tickets.get(ticket);
-      if (!item) return res.sendStatus(404);
+      if (!item || item.remote) return res.sendStatus(404);
       const session = getSession({ headers: { cookie: `home_admin_session=${item.session}` } });
       if (!access.trustProxy(req.socket.remoteAddress, 0) || !access.isAllowed(req) || req.get("Origin") !== access.origin
           || req.get("X-Home-Login-Origin") !== item.target || `https://${req.get("Host")}` !== item.target
@@ -41,16 +49,47 @@ export const createLoginBridge = ({ access, vault, now = Date.now, ttl = 60_000 
       sendBridge(res, entry);
     } catch (error) { next(error); }
   };
-  return { issue, consume };
+  const remoteCors = async (req, res) => {
+    res.set({ "Cache-Control": "private, no-store, max-age=0", Vary: "Origin" });
+    const origin = req.get("Origin");
+    if (!origin || !access.trustProxy(req.socket.remoteAddress, 0) || !access.isAllowed(req)
+        || `https://${req.get("Host")}` !== access.origin) return false;
+    const allowed = (await vault.list()).some(entry => entry.enabled && entry.adapter === "metapi" && new URL(entry.targetUrl).origin === origin);
+    if (!allowed) return false;
+    res.set({ "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Methods": "POST", "Access-Control-Allow-Headers": "Content-Type" });
+    return true;
+  };
+  const remoteOptions = async (req, res, next) => {
+    try { return res.sendStatus(await remoteCors(req, res) ? 204 : 404); } catch (error) { next(error); }
+  };
+  const remoteConsume = async (req, res, next) => {
+    try {
+      if (!await remoteCors(req, res)) return res.sendStatus(404);
+      prune();
+      const ticket = req.body?.ticket, item = tickets.get(ticket);
+      if (!item?.remote || req.get("Origin") !== item.target || normalizeIp(req.ip) !== item.ip
+          || (req.get("User-Agent") || "") !== item.ua
+          || !getSession({ headers: { cookie: `home_admin_session=${item.session}` } })) return res.sendStatus(404);
+      // As with local handoff, only one request may decrypt the credential.
+      tickets.delete(ticket);
+      const entry = await vault.launch(item.id);
+      if (!entry || entry.adapter !== "metapi" || new URL(entry.targetUrl).origin !== item.target
+          || new URL(entry.loginUrl).origin !== item.target) return res.sendStatus(404);
+      return res.json(payloadFor(entry));
+    } catch (error) { next(error); }
+  };
+  const client = (req, res) => sendBridge(res, null, access.origin);
+  return { issue, consume, client, remoteOptions, remoteConsume };
 };
 
-const sendBridge = (res, entry) => {
-  const nonce = randomBytes(18).toString("base64"), payload = { adapter: entry.adapter, target: entry.targetUrl, login: entry.loginUrl, fields: entry.fields, passwordField: entry.passwordField, usernameField: entry.usernameField };
-  headers(res, nonce).type("html").send(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>正在登录 ${escape(entry.name)}</title><p id="status">正在登录 ${escape(entry.name)}…</p><a href="${escape(entry.targetUrl)}">打开原登录页面</a><script nonce="${nonce}">
+const sendBridge = (res, entry, remoteHome = "") => {
+  const nonce = randomBytes(18).toString("base64"), payload = entry ? payloadFor(entry) : null;
+  headers(res, nonce, remoteHome).type("html").send(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>正在登录 ${escape(entry?.name || "服务")}</title><p id="status">正在登录 ${escape(entry?.name || "服务")}…</p><a href="${escape(entry?.targetUrl || "/")}">打开原登录页面</a><script nonce="${nonce}">
 let cfg=${json(payload)};
 const write=(key,value)=>localStorage.setItem(key,String(value));
 const call=async(url,options={})=>{const response=await fetch(url,{credentials:'same-origin',cache:'no-store',...options});const data=await response.json().catch(()=>({}));if(!response.ok||data.success===false||data.ok===false||data.status==='error'||data.requires_2fa||data.data?.totp_required)throw Error('登录失败或需要额外验证，请打开原登录页面。');return data;};
 (async()=>{
+ ${remoteHome ? `const ticket=location.hash.slice(1);history.replaceState(null,'',location.pathname);if(!/^[A-Za-z0-9_-]{43}$/.test(ticket))throw Error('登录链接已失效');cfg=await call(${json(remoteHome + "/_home_login/remote-consume")},{method:'POST',credentials:'omit',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticket})});` : ""}
  if(new URL(cfg.login).origin!==location.origin||new URL(cfg.target).origin!==location.origin)throw Error('登录站点不符');
  const adapter=cfg.adapter;
  if(adapter==='basic'){
@@ -64,18 +103,19 @@ const call=async(url,options={})=>{const response=await fetch(url,{credentials:'
   });
   const target=cfg.target;cfg=null;location.replace(target);return;
  }
- if(adapter==='cpa'){
-  const key=cfg.fields[cfg.passwordField];
+ if(adapter==='cpa'||adapter==='metapi'){
+  const key=adapter==='metapi'?cfg.fields[cfg.passwordField].trim():cfg.fields[cfg.passwordField];
   await call(cfg.login,{headers:{Authorization:'Bearer '+key}});
   const page=await fetch(cfg.target,{cache:'no-store',credentials:'same-origin'});if(!page.ok)throw Error('无法打开后台页面');
   let html=await page.text();
-  const seed={'isLoggedIn':'true','cli-proxy-auth':JSON.stringify({state:{apiBase:location.origin,managementKey:key,rememberPassword:true,sessionMode:'manager_embedded',sessionPanelBase:location.origin},version:0})};
-  const shim='('+function(seed){const values=new Map(Object.entries(seed)),keys=new Set(['cli-proxy-auth','managementKey','apiBase','apiUrl','isLoggedIn']);const proto=Storage.prototype,get=proto.getItem,set=proto.setItem,remove=proto.removeItem;proto.getItem=function(k){return this===localStorage&&keys.has(k)?values.get(k)??null:get.call(this,k);};proto.setItem=function(k,v){if(this===localStorage&&keys.has(k)){values.set(k,String(v));return;}return set.call(this,k,v);};proto.removeItem=function(k){if(this===localStorage&&keys.has(k)){values.delete(k);return;}return remove.call(this,k);};}.toString()+')('+JSON.stringify(seed).replace(/</g,'\\u003c')+');';
+  const seed=adapter==='metapi'?{'auth_token':key,'auth_token_expires_at':String(Date.now()+12*60*60*1000)}:{'isLoggedIn':'true','cli-proxy-auth':JSON.stringify({state:{apiBase:location.origin,managementKey:key,rememberPassword:true,sessionMode:'manager_embedded',sessionPanelBase:location.origin},version:0})};
+  const keys=adapter==='metapi'?['auth_token','auth_token_expires_at']:['cli-proxy-auth','managementKey','apiBase','apiUrl','isLoggedIn'];
+  const shim='('+function(seed,names){const values=new Map(Object.entries(seed)),keys=new Set(names);const proto=Storage.prototype,get=proto.getItem,set=proto.setItem,remove=proto.removeItem;proto.getItem=function(k){return this===localStorage&&keys.has(k)?values.get(k)??null:get.call(this,k);};proto.setItem=function(k,v){if(this===localStorage&&keys.has(k)){values.set(k,String(v));return;}return set.call(this,k,v);};proto.removeItem=function(k){if(this===localStorage&&keys.has(k)){values.delete(k);return;}return remove.call(this,k);};}.toString()+')('+JSON.stringify(seed).replace(/</g,'\\u003c')+','+JSON.stringify(keys)+');';
   const doc=new DOMParser().parseFromString(html,'text/html');
   for(const node of doc.querySelectorAll('script'))node.nonce='${nonce}';
   const bootstrap=doc.createElement('script');bootstrap.nonce='${nonce}';bootstrap.textContent=shim;doc.head.prepend(bootstrap);
   html=doc.documentElement.outerHTML;
-  cfg=null;history.replaceState(null,'',${json(entry.targetUrl)});
+  const target=cfg.target;cfg=null;history.replaceState(null,'',target);
   document.open();document.write(html);document.close();return;
  }
  const requestHeaders={'Content-Type':'application/json'};

@@ -26,6 +26,10 @@ export const createApp = ({ access, vault }) => {
   });
   const bridge = createLoginBridge({ access, vault });
   app.post("/_home_login/consume", access.requireIp, express.urlencoded({ extended: false, limit: "1kb" }), bridge.consume);
+  // This client contains no credentials. Remote nginx serves it at /.home-login.
+  app.get("/_home_login/client", bridge.client);
+  app.options("/_home_login/remote-consume", access.requireIp, bridge.remoteOptions);
+  app.post("/_home_login/remote-consume", access.requireIp, express.json({ limit: "1kb" }), bridge.remoteConsume);
   app.use(`${access.adminPath}/api`, createApi({ access, vault, bridge }));
   app.use(access.adminPath, access.requireIp);
   // Unknown API paths must never fall through to the public SPA document.
