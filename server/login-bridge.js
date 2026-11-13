@@ -13,7 +13,7 @@ const headers = (res, nonce, remoteHome = "") => res.set({
 });
 
 const payloadFor = entry => ({ adapter: entry.adapter, target: entry.targetUrl, login: entry.loginUrl, fields: entry.fields, passwordField: entry.passwordField, usernameField: entry.usernameField });
-const remoteAdapters = new Set(["metapi", "sub2api", "cpa"]);
+const remoteAdapters = new Set(["metapi", "sub2api", "cpa", "new-api"]);
 const usesRemoteHandoff = entry => remoteAdapters.has(entry.adapter) && (entry.remote ?? ["metapi", "sub2api"].includes(entry.adapter));
 
 export const createLoginBridge = ({ access, vault, now = Date.now, ttl = 60_000 }) => {

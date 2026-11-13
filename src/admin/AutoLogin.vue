@@ -13,7 +13,7 @@
       <el-form id="auto-login-form" label-position="top" @submit.prevent="save">
         <el-form-item label="服务名称"><el-input v-model="draft.name" maxlength="30" /></el-form-item>
         <el-form-item label="登录方式"><el-select v-model="draft.adapter" @change="adapterChanged"><el-option v-for="option in adapters" :key="option.value" :label="option.label" :value="option.value" /></el-select></el-form-item>
-        <el-form-item v-if="['metapi','sub2api','cpa'].includes(draft.adapter)" label="远端 Nginx 中转"><el-switch v-model="draft.remote" active-text="目标服务部署在其他服务器" /></el-form-item>
+        <el-form-item v-if="['metapi','sub2api','cpa','new-api'].includes(draft.adapter)" label="远端 Nginx 中转"><el-switch v-model="draft.remote" active-text="目标服务部署在其他服务器" /></el-form-item>
         <p v-if="draft.remote">远端 Nginx 的 /.home-login 需代理 https://subaimu.com/_home_login/client；无需在 Nginx 填写账号或密码。</p>
         <p v-if="draft.adapter === 'metapi'">MetAPI 使用管理员 Token，请填在密码栏；用户名留空，接口为 /api/settings/auth/info。Token 仅在本次后台页面内存中使用，刷新后请重新从主页进入。远端 Nginx 需按部署说明接入 /.home-login。</p>
         <p v-if="draft.adapter === 'sub2api'">Sub2API 使用邮箱密码，用户名字段填 email，登录接口为 /api/v1/auth/login。登录状态仅保存在当前页面内存，刷新后请重新从主页进入；验证码或双因素仍需在原站完成。</p>

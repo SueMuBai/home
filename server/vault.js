@@ -87,7 +87,7 @@ export const createVault = ({ file = path.join(dataDir, "login-vault.json"), key
       if (!["form", "basic", "json", "3x-ui", "komari", "astrbot", "napcat", "new-api", "miaomiaowu", "vm2api", "memoirs", "cpa", "metapi", "sub2api"].includes(entry.adapter)) invalid("登录方式无效");
       if (input.remote !== undefined && typeof input.remote !== "boolean") invalid("远端中转开关无效");
       entry.remote = input.remote ?? old?.remote ?? ["metapi", "sub2api"].includes(entry.adapter);
-      if (entry.remote && !["metapi", "sub2api", "cpa"].includes(entry.adapter)) invalid("当前登录方式不支持远端中转");
+      if (entry.remote && !["metapi", "sub2api", "cpa", "new-api"].includes(entry.adapter)) invalid("当前登录方式不支持远端中转");
       if (!entry.name) invalid("名称不能为空");
       if (new URL(entry.targetUrl).origin !== new URL(entry.loginUrl).origin) invalid("登录接口和目标后台必须属于同一站点");
       if (data.entries.some(x => x.id !== entry.id && canonical(x.targetUrl) === canonical(entry.targetUrl))) invalid("目标后台已有自动登录配置");

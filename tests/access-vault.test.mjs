@@ -12,7 +12,7 @@ process.env.ADMIN_PASSWORD = "fixture-password-012345";
 const { createVault } = await import("../server/vault.js");
 const { createAccess, normalizeIp } = await import("../server/access.js");
 const { createApp } = await import("../server/app.js");
-const { initStore, getAuth, saveAuth } = await import("../server/store.js");
+const { initStore, getAuth, saveAuth, getConfig, saveConfig } = await import("../server/store.js");
 const { generateTotp } = await import("../server/auth.js");
 const { TOTP, Secret } = await import("otpauth");
 await initStore();
@@ -153,4 +153,38 @@ test("management routes enforce IP, session, origin, obsolete paths and on-click
     await call(`${base}/logout`, { cookie, method: "POST", headers: { Origin: origin } });
     assert.equal((await call(`${base}/launch/${entry.id}`, { cookie })).status, 401);
   } finally { await new Promise(resolve => server.close(resolve)); }
+});
+
+test("a public card stays a plain link for visitors and uses credentials only for authenticated allowed administrators", async () => {
+  const adminPath = "/public_card_fixture_123456789012345", origin = "https://subaimu.com";
+  const original = getConfig(), target = "https://public.example/", vault = vaultAt("public-card.json");
+  const entry = await vault.save({ ...input("public"), adapter: "new-api", remote: true, targetUrl: target, loginUrl: target + "api/user/login" });
+  await saveConfig({ ...original, siteLinks: [{ name: "public", icon: "Link", link: target, hidden: false }] });
+  const app = createApp({ access: createAccess({ adminPath, origin, allowedIps: ["185.93.71.64"], trustedProxies: ["127.0.0.1"] }), vault });
+  const server = await new Promise(resolve => { const s = app.listen(0, "127.0.0.1", () => resolve(s)); });
+  const call = (url, { method = "GET", cookie, ip = "185.93.71.64", body } = {}) => new Promise((resolve, reject) => {
+    const req = request({ hostname: "127.0.0.1", port: server.address().port, path: url, method, headers: { "X-Forwarded-For": ip, "X-Forwarded-Proto": "https", ...(cookie ? { Cookie: cookie } : {}), ...(body ? { Origin: origin, "Content-Type": "application/json" } : {}) } }, res => {
+      let text = ""; res.on("data", b => text += b); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, text, json: () => JSON.parse(text) }));
+    }); req.on("error", reject); req.end(body ? JSON.stringify(body) : undefined);
+  });
+  try {
+    for (const ip of ["185.93.71.64", "198.51.100.1"]) {
+      const visitor = (await call("/api/config", { ip })).json();
+      assert.equal(visitor.siteLinks[0].link, target); assert.equal(visitor.siteLinks[0].launchUrl, undefined); assert.equal(visitor.isAdmin, false);
+    }
+    assert.equal((await call(`${adminPath}/api/launch/${entry.id}`)).status, 401);
+    const login = await call(`${adminPath}/api/login`, { method: "POST", body: { password: process.env.ADMIN_PASSWORD } });
+    assert.equal(login.status, 200);
+    const cookie = login.headers["set-cookie"][0].split(";")[0];
+    const authenticated = (await call("/api/config", { cookie })).json();
+    assert.equal(authenticated.isAdmin, true);
+    assert.equal(authenticated.siteLinks[0].link, `${adminPath}/api/launch/${entry.id}`);
+    assert.equal(authenticated.siteLinks[0].hidden, false);
+    assert.equal(JSON.stringify(authenticated).includes(input().password), false);
+    const blocked = (await call("/api/config", { cookie, ip: "198.51.100.1" })).json();
+    assert.equal(blocked.siteLinks[0].link, target); assert.equal(blocked.isAdmin, false);
+    await call(`${adminPath}/api/logout`, { method: "POST", cookie, body: {} });
+    const loggedOut = (await call("/api/config", { cookie })).json();
+    assert.equal(loggedOut.siteLinks[0].link, target); assert.equal(loggedOut.isAdmin, false);
+  } finally { await new Promise(resolve => server.close(resolve)); await saveConfig(original); }
 });

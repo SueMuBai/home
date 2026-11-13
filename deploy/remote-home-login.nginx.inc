@@ -1,5 +1,5 @@
 # Include inside each remote service's actual HTTP/HTTPS server blocks.
-# Used by MetAPI, Sub2API and CPA with the remote handoff switch enabled.
+# Used by MetAPI, Sub2API, CPA and New API with remote handoff enabled.
 location = /.home-login {
     set $home_login_transport "$scheme:$http_x_forwarded_proto";
     if ($home_login_transport !~ "^(https:|http:https$)") { return 308 https://$host$request_uri; }

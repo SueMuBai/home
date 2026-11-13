@@ -114,8 +114,8 @@ test("remote client has no credentials and compiles with exact CORS origin and m
   destroySession(f.session);
 });
 
-test("Sub2API and remote CPA use fragment handoff; local CPA keeps native POST", async () => {
-  for (const [adapter, remote] of [["sub2api", undefined], ["cpa", true]]) {
+test("Sub2API, remote CPA and remote New API use fragment handoff; local CPA keeps native POST", async () => {
+  for (const [adapter, remote] of [["sub2api", undefined], ["cpa", true], ["new-api", true]]) {
     const f = setup(adapter, remote);
     assert.match(f.issued.body, /location.replace/);
     assert.equal((await f.consume()).code, 404);
